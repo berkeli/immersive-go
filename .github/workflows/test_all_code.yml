@@ -18,8 +18,8 @@ jobs:
       run: cd cli-files/go-ls/cmd && go test -race -covermode=atomic -coverprofile=../coverage.out -v
     - name: Upload to codecov
       uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          name: go-ls coverage
-          files: ./coverage.out
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        name: go-ls coverage
+        files: ./coverage.out
 
