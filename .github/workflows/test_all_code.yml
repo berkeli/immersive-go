@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  test:
+  test-and-upload-coverage:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -22,4 +22,12 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         name: go-ls coverage
         files: ./cli-files/go-ls/coverage.out
+    - name: Test go-cat
+      run: cd cli-files/go-ls/cmd && go test -race -covermode=atomic -coverprofile=../coverage.out -v
+    - name: Upload to codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        name: go-cat coverage
+        files: ./cli-files/go-cat/coverage.out
 
