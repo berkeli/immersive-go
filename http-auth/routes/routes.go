@@ -43,6 +43,10 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("Error reading request body"))
 		}
 
+		if b == nil {
+			b = []byte("<em>Hello World</em>")
+		}
+
 		body := fmt.Sprintf("%s%s", HTMLHeader, b)
 		w.Write([]byte(body))
 	}
@@ -51,10 +55,6 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 func Handle200(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Hello, world"))
-}
-
-func Handle404(w http.ResponseWriter, r *http.Request) {
-	http.NotFoundHandler()
 }
 
 func Handle500(w http.ResponseWriter, r *http.Request) {

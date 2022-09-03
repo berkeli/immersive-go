@@ -10,7 +10,7 @@ func main() {
 
 	http.HandleFunc("/200", routes.Handle200)
 
-	http.HandleFunc("/404", routes.Handle404)
+	http.Handle("/404", http.NotFoundHandler())
 
 	http.HandleFunc("/500", routes.Handle500)
 
