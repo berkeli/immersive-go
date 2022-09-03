@@ -65,7 +65,7 @@ func TestGolsCmdFunc(t *testing.T) {
 		}
 	})
 
-	t.Run("out put with -m flag", func(t *testing.T) {
+	t.Run("output with -m flag", func(t *testing.T) {
 		r, w, _ := os.Pipe()
 		os.Stdout = w
 
