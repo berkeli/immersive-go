@@ -31,7 +31,7 @@ jobs:
         name: go-cat coverage
         files: ./cli-files/go-cat/coverage.out
     - name: Test http-auth
-      run: cd http-auth && go test -race -covermode=atomic -coverprofile=../coverage.out -v
+      run: cd http-auth && go test -race -covermode=atomic -coverprofile=coverage.out -v
     - name: Upload to codecov
       uses: codecov/codecov-action@v3
       with:
