@@ -1,5 +1,6 @@
-![](./readme-assets/giphy.gif)
+[![codecov](https://codecov.io/gh/berkeli/immersive-go-course/branch/main/graph/badge.svg?token=pMmbQYn0Mb)](https://codecov.io/gh/berkeli/immersive-go-course)
 
+![](./readme-assets/giphy.gif)
 # Let's go!
 
 An immersive, introductory course to backend software engineering using [go](https://go.dev).
