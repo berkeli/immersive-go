@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
+
+	"github.com/joho/godotenv"
+	"golang.org/x/time/rate"
 )
 
 const HTMLHeader = "<!DOCTYPE html><html>"
@@ -57,7 +62,36 @@ func Handle500(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("500 - Internal Server Error"))
 }
 
-func HandleAuth(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusUnauthorized)
-	w.Write([]byte("401 - Unauthorized"))
+func HandleAuthenticated(w http.ResponseWriter, r *http.Request) {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	username := os.Getenv("USERNAME")
+	password := os.Getenv("PASSWORD")
+
+	user, pass, ok := r.BasicAuth()
+
+	if !ok || user != username || pass != password {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("401 - Unauthorized"))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("Hello, %s", username)))
+
+}
+
+var limiter = rate.NewLimiter(100, 30)
+
+func HandleRateLimit(w http.ResponseWriter, r *http.Request) {
+	if !limiter.Allow() {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Hello, world"))
+	} else {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte("429 - Too Many Requests"))
+	}
 }

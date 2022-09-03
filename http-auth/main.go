@@ -14,7 +14,9 @@ func main() {
 
 	http.HandleFunc("/500", routes.Handle500)
 
-	http.HandleFunc("/authenticated", routes.HandleAuth)
+	http.HandleFunc("/authenticated", routes.HandleAuthenticated)
+
+	http.HandleFunc("/limited", routes.HandleRateLimit)
 
 	http.ListenAndServe(":8080", nil)
 }
