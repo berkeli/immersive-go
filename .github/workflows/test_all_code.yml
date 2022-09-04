@@ -54,11 +54,7 @@ jobs:
         name: http-auth coverage
         files: ./http-auth/coverage.out
     - name: Setup PSQL database for testing
-      run: |
-        PGPASSWORD=postgres psql -U postgres -tc "SELECT 'CREATE DATABASE go_server_test_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'go_server_test_db')"
-    - name: Add images table
-      run: |
-        PGPASSWORD=postgres psql -U postgres -tc "CREATE TABLE images( id serial NOT NULL, title text NOT NULL, url text NOT NULL, alt_text text, PRIMARY KEY (id))"
+      run: psql -f ./server-database/migrations.sql postgresql://postgres:postgres@localhost:5432/postgres
     - name: Run server-database tests
       run: cd server-database && EXECUTION_ENVIRONMENT="test" DB_URL="DB_URL=postgres://berkeli:postgres@localhost:5432/go_server_test_db" go test ./... -race -covermode=atomic -coverprofile=coverage.out -v
     
