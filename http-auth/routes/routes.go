@@ -15,6 +15,21 @@ import (
 
 const HTMLHeader = "<!DOCTYPE html><html>"
 
+func IsTestRun() bool {
+	return os.Getenv("EXECUTION_ENVIRONMENT") == "test"
+}
+
+func loadEnv() {
+	path := ""
+	if IsTestRun() {
+		path = "../.env"
+	}
+	err := godotenv.Load(path)
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+}
+
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		w.Header().Set("Content-Type", "text/html")
@@ -63,10 +78,7 @@ func Handle500(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleAuthenticated(w http.ResponseWriter, r *http.Request) {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	loadEnv()
 
 	username := os.Getenv("USERNAME")
 	password := os.Getenv("PASSWORD")

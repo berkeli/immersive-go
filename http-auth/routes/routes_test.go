@@ -1,7 +1,6 @@
-package main
+package routes
 
 import (
-	"http-auth/routes"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +12,7 @@ func TestMain(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
 		rr := httptest.NewRecorder()
 
-		handler := http.HandlerFunc(routes.IndexHandler)
+		handler := http.HandlerFunc(IndexHandler)
 
 		handler.ServeHTTP(rr, request)
 
@@ -28,7 +27,7 @@ func TestMain(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		handler := http.HandlerFunc(routes.IndexHandler)
+		handler := http.HandlerFunc(IndexHandler)
 
 		handler.ServeHTTP(rr, request)
 
@@ -41,7 +40,7 @@ func TestMain(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/200", nil)
 		rr := httptest.NewRecorder()
 
-		handler := http.HandlerFunc(routes.Handle200)
+		handler := http.HandlerFunc(Handle200)
 
 		handler.ServeHTTP(rr, request)
 
@@ -52,7 +51,7 @@ func TestMain(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/500", nil)
 		rr := httptest.NewRecorder()
 
-		handler := http.HandlerFunc(routes.Handle500)
+		handler := http.HandlerFunc(Handle500)
 
 		handler.ServeHTTP(rr, request)
 
@@ -65,7 +64,7 @@ func TestMain(t *testing.T) {
 			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(routes.HandleAuthenticated)
+			handler := http.HandlerFunc(HandleAuthenticated)
 
 			handler.ServeHTTP(rr, request)
 
@@ -78,7 +77,7 @@ func TestMain(t *testing.T) {
 			request.Header.Add("Authorization", "Basic invalid")
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(routes.HandleAuthenticated)
+			handler := http.HandlerFunc(HandleAuthenticated)
 
 			handler.ServeHTTP(rr, request)
 
@@ -91,7 +90,7 @@ func TestMain(t *testing.T) {
 			request.Header.Add("Authorization", "Basic dGVzdHVzZXI6c29tZXN0cm9uZ1BXRA==")
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(routes.HandleAuthenticated)
+			handler := http.HandlerFunc(HandleAuthenticated)
 
 			handler.ServeHTTP(rr, request)
 
@@ -103,7 +102,7 @@ func TestMain(t *testing.T) {
 	t.Run("GET /limited", func(t *testing.T) {
 		t.Run("test over the limit", func(t *testing.T) {
 			request, _ := http.NewRequest(http.MethodGet, "/limited", nil)
-			handler := http.HandlerFunc(routes.HandleRateLimit)
+			handler := http.HandlerFunc(HandleRateLimit)
 			var responses []httptest.ResponseRecorder
 			for i := 0; i < 100; i++ {
 				rr := httptest.NewRecorder()
