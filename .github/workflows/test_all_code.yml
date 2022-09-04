@@ -54,9 +54,9 @@ jobs:
         name: http-auth coverage
         files: ./http-auth/coverage.out
     - name: Setup PSQL database for testing
-      run: psql -f ./server-database/migrations.sql postgresql://postgres:postgres@localhost:5432/postgres
+      run: psql -f ./server-database/migrations.sql postgresql://postgres:postgres@localhost:5432/go_server_test_db
     - name: Run server-database tests
-      run: cd server-database && EXECUTION_ENVIRONMENT="test" DB_URL="postgres://postgres:postgres@localhost:5432/go_server_test_db" go test ./... -race -covermode=atomic -coverprofile=coverage.out -v
+      run: cd server-database && EXECUTION_ENVIRONMENT="test" DB_URL="postgresql://postgres:postgres@localhost:5432/go_server_test_db" go test ./... -race -covermode=atomic -coverprofile=coverage.out -v
     - name: Upload to codecov
       uses: codecov/codecov-action@v3
       with:
