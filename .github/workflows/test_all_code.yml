@@ -15,7 +15,7 @@ jobs:
       with:
         go-version: 1.19
     - name: Test go-ls
-      run: cd cli-files/go-ls/cmd && go test -race -covermode=atomic -coverprofile=../coverage.out -v
+      run: cd cli-files/go-ls && go test ./... -race -covermode=atomic -coverprofile=../coverage.out -v
     - name: Upload to codecov
       uses: codecov/codecov-action@v3
       with:
@@ -23,7 +23,7 @@ jobs:
         name: go-ls coverage
         files: ./cli-files/go-ls/coverage.out
     - name: Test go-cat
-      run: cd cli-files/go-cat/cmd && go test -race -covermode=atomic -coverprofile=../coverage.out -v
+      run: cd cli-files/go-cat && go test ./... -race -covermode=atomic -coverprofile=../coverage.out -v
     - name: Upload to codecov
       uses: codecov/codecov-action@v3
       with:
@@ -35,7 +35,6 @@ jobs:
     - name: Upload to codecov
       uses: codecov/codecov-action@v3
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
         name: http-auth coverage
         files: ./http-auth/coverage.out
     
