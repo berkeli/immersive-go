@@ -1,0 +1,5 @@
+## build docker image for test-db
+docker build -t go-server-test ./
+
+## run docker image 
+docker run -d --name go-server-test -p 5432:5432 go-server-test      
