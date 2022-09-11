@@ -18,13 +18,14 @@ var (
 	conn *pgx.Conn
 )
 
-func ConnectToDB(DB_URL string) {
-	var err error
-	conn, err = pgx.Connect(context.Background(), DB_URL)
+func ConnectToDB(DB_URL string) *pgx.Conn {
+	conn, err := pgx.Connect(context.Background(), DB_URL)
 
 	if err != nil {
 		log.Fatal("Unable to connect to database: " + err.Error())
 	}
+
+	return conn
 }
 
 func enableCors(w *http.ResponseWriter) {
@@ -32,11 +33,13 @@ func enableCors(w *http.ResponseWriter) {
 }
 
 func Run(DB_URL string, port int) {
-	ConnectToDB(DB_URL)
+	conn := ConnectToDB(DB_URL)
 	defer conn.Close(context.Background())
 
+	http.HandleFunc("/images.json", func(w http.ResponseWriter, r *http.Request) {
+		ImagesHandler(w, r, conn)
+	})
 	http.HandleFunc("/", IndexHandler)
-	http.HandleFunc("/images.json", ImagesHandler)
 
 	log.Printf("Listening on :%d...", port)
 
@@ -50,7 +53,8 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Welcome to image server API")
 }
 
-func ImagesHandler(w http.ResponseWriter, r *http.Request) {
+func ImagesHandler(w http.ResponseWriter, r *http.Request, conn *pgx.Conn) {
+	log.Println(r.Method, r.URL.EscapedPath())
 	enableCors(&w)
 
 	queryParams := r.URL.Query()
