@@ -14,10 +14,6 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-var (
-	conn *pgx.Conn
-)
-
 func ConnectToDB(DB_URL string) *pgx.Conn {
 	conn, err := pgx.Connect(context.Background(), DB_URL)
 
