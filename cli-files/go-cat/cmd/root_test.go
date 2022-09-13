@@ -1,48 +1,62 @@
 package cmd
 
 import (
+	"bytes"
 	"io/ioutil"
-	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func TestRootCmd(t *testing.T) {
-	t.Run("No path provided", func(t *testing.T) {
-
-		cmd := rootCmd
-		err := cmd.Execute()
-
-		if err == nil {
-			t.Error("Expected error, got nil")
-		}
-	})
-
-	t.Run("path to file dew.txt", func(t *testing.T) {
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		cmd := rootCmd
-		cmd.SetArgs([]string{"../assets/dew.txt"})
-		err := cmd.Execute()
-
-		w.Close()
-
-		if err != nil {
-			t.Error("Did not expect error, got", err)
-		}
-
-		want := `“A World of Dew” by Kobayashi Issa
+var TestTable = []struct {
+	Name           string
+	Args           []string
+	ExpectedOutput string
+	ExpectedError  error
+	AssertOutput   bool
+}{
+	{
+		Name:           "No path provided",
+		Args:           []string{},
+		ExpectedOutput: "",
+		ExpectedError:  ErrNoPath,
+		AssertOutput:   false,
+	},
+	{
+		Name: "Path to dew.txt",
+		Args: []string{"../assets/dew.txt"},
+		ExpectedOutput: `“A World of Dew” by Kobayashi Issa
 
 A world of dew,
 And within every dewdrop
 A world of struggle.
-`
+`,
+		ExpectedError: nil,
+		AssertOutput:  true,
+	},
+}
 
-		got, err := ioutil.ReadAll(r)
+func TestRootCmd(t *testing.T) {
 
-		if string(got) != want {
-			t.Errorf("Expected %q, got %q", want, string(got))
-		}
+	for _, tt := range TestTable {
+		t.Run(tt.Name, func(t *testing.T) {
+			b := bytes.NewBufferString("")
 
-	})
+			rootCmd.SetOut(b)
+
+			rootCmd.SetArgs(tt.Args)
+			err := rootCmd.Execute()
+			require.ErrorIs(t, err, tt.ExpectedError)
+
+			if tt.AssertOutput {
+				out, err := ioutil.ReadAll(b)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				require.Equal(t, string(out), tt.ExpectedOutput)
+			}
+		})
+	}
+
 }

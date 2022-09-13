@@ -4,8 +4,11 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -25,33 +28,47 @@ var rootCmd = &cobra.Command{
 			return ErrNoPath
 		}
 
-		path := args[0]
-
-		argStat, err := os.Stat(path)
-		if err != nil {
-			return err
+		for _, path := range args {
+			err := PrintFileContents(cmd.OutOrStdout(), path)
+			if err != nil {
+				return err
+			}
 		}
-
-		if argStat.IsDir() {
-			return ErrDir
-		}
-
-		data, err := os.ReadFile(args[0])
-
-		if err != nil {
-			return err
-		}
-
-		fmt.Println(string(data))
-
 		return nil
 
 	},
 }
 
+func PrintFileContents(Writer io.Writer, path string) error {
+	file, err := os.Open(path)
+	defer file.Close()
+	if err != nil {
+		return err
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	if stat.IsDir() {
+		return ErrDir
+	}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fmt.Fprintln(Writer, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
-		os.Exit(1)
+		log.Fatal(err)
 	}
 }
