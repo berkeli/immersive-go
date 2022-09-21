@@ -4,7 +4,6 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -40,13 +39,8 @@ var rootCmd = &cobra.Command{
 }
 
 func PrintFileContents(Writer io.Writer, path string) error {
-	file, err := os.Open(path)
-	defer file.Close()
-	if err != nil {
-		return err
-	}
 
-	stat, err := file.Stat()
+	stat, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
@@ -55,11 +49,9 @@ func PrintFileContents(Writer io.Writer, path string) error {
 		return ErrDir
 	}
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		fmt.Fprintln(Writer, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
+	file, err := os.ReadFile(path)
+	fmt.Fprint(Writer, string(file))
+	if err != nil {
 		return err
 	}
 
