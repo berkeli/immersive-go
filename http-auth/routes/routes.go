@@ -27,7 +27,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		if len(queryParams) > 0 {
 			b = "<h1>Query Params</h1><ul>"
 			for key, value := range queryParams {
-				b += fmt.Sprintf("<li>%s: %s</li>", key, html.EscapeString(strings.Join(value, ", ")))
+				b += fmt.Sprintf("<li>%s: %s</li>", html.EscapeString(key), html.EscapeString(strings.Join(value, ", ")))
 			}
 			b += "</ul>"
 		}
@@ -38,6 +38,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "POST" {
 		w.Header().Set("Content-Type", "text/html")
+		returnMessage := ""
 
 		b, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -46,10 +47,12 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if b == nil {
-			b = []byte("<em>Hello World</em>")
+			returnMessage = html.EscapeString("<em>Hello World</em>")
+		} else {
+			returnMessage = html.EscapeString(string(b))
 		}
 
-		body := fmt.Sprintf("%s%s", HTMLHeader, b)
+		body := fmt.Sprintf("%s%s", HTMLHeader, returnMessage)
 		w.Write([]byte(body))
 	}
 }

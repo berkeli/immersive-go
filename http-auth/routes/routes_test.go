@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,9 +13,7 @@ func TestMain(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
 		rr := httptest.NewRecorder()
 
-		handler := http.HandlerFunc(IndexHandler)
-
-		handler.ServeHTTP(rr, request)
+		IndexHandler(rr, request)
 
 		AssertStatusOK(t, rr)
 	})
@@ -27,22 +26,18 @@ func TestMain(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 
-		handler := http.HandlerFunc(IndexHandler)
-
-		handler.ServeHTTP(rr, request)
+		IndexHandler(rr, request)
 
 		AssertStatusOK(t, rr)
 
-		AssertBodyContains(t, rr, bodyHTML)
+		AssertBodyEquals(t, rr, HTMLHeader+html.EscapeString(bodyHTML))
 	})
 
 	t.Run("GET /200", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/200", nil)
 		rr := httptest.NewRecorder()
 
-		handler := http.HandlerFunc(Handle200)
-
-		handler.ServeHTTP(rr, request)
+		Handle200(rr, request)
 
 		AssertStatusOK(t, rr)
 	})
@@ -51,9 +46,7 @@ func TestMain(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/500", nil)
 		rr := httptest.NewRecorder()
 
-		handler := http.HandlerFunc(Handle500)
-
-		handler.ServeHTTP(rr, request)
+		Handle500(rr, request)
 
 		AssertStatusInternalServerError(t, rr)
 	})
@@ -64,9 +57,9 @@ func TestMain(t *testing.T) {
 			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(HandleAuthenticated("test", "test"))
+			handler := HandleAuthenticated("test", "test")
 
-			handler.ServeHTTP(rr, request)
+			handler(rr, request)
 
 			AssertStatusUnauthorized(t, rr)
 		})
@@ -77,9 +70,9 @@ func TestMain(t *testing.T) {
 			request.Header.Add("Authorization", "Basic invalid")
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(HandleAuthenticated("test", "test"))
+			handler := HandleAuthenticated("test", "test")
 
-			handler.ServeHTTP(rr, request)
+			handler(rr, request)
 
 			AssertStatusUnauthorized(t, rr)
 		})
@@ -90,50 +83,57 @@ func TestMain(t *testing.T) {
 			request.Header.Add("Authorization", "Basic dGVzdHVzZXI6c29tZXN0cm9uZ1BXRA==")
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(HandleAuthenticated("testuser", "somestrongPWD"))
+			handler := HandleAuthenticated("testuser", "somestrongPWD")
 
-			handler.ServeHTTP(rr, request)
+			handler(rr, request)
 
 			AssertStatusOK(t, rr)
-			AssertBodyContains(t, rr, "Hello, testuser")
+			AssertBodyEquals(t, rr, "Hello, testuser")
 		})
 	})
 
 	t.Run("GET /limited", func(t *testing.T) {
 		t.Run("test over the limit", func(t *testing.T) {
+			r := 100 //number of requests to the server
 			request, _ := http.NewRequest(http.MethodGet, "/limited", nil)
 			handler := http.HandlerFunc(HandleRateLimit)
 			var responses []httptest.ResponseRecorder
-			for i := 0; i < 100; i++ {
+			for i := 0; i < r; i++ {
 				rr := httptest.NewRecorder()
 				handler.ServeHTTP(rr, request)
 				responses = append(responses, *rr)
 			}
 
 			statusOK, statusTooManyRequests := 0, 0
-			for i := 0; i < 100; i++ {
-				if responses[i].Code == http.StatusOK {
+			for _, response := range responses {
+				if response.Code == http.StatusOK {
 					statusOK++
-				} else if responses[i].Code == http.StatusTooManyRequests {
+				} else if response.Code == http.StatusTooManyRequests {
 					statusTooManyRequests++
+				} else {
+					t.Errorf("got %d want %d or %d", response.Code, http.StatusOK, http.StatusTooManyRequests)
 				}
 			}
 
-			if statusOK != 70 {
-				t.Errorf("got %d want %d", statusOK, 10)
+			if statusOK < 30 {
+				t.Errorf("got %d wanted at least %d successful requests", statusOK, 30)
 			}
 
-			if statusTooManyRequests != 30 {
-				t.Errorf("got %d want %d", statusTooManyRequests, 30)
+			if statusTooManyRequests < 1 {
+				t.Errorf("got %d wanted at least %d request to fail", statusTooManyRequests, 1)
+			}
+
+			if statusTooManyRequests+statusOK != r {
+				t.Errorf("made %d requests, but only received %d responses", r, statusOK+statusTooManyRequests)
 			}
 		})
 	})
 }
 
-func AssertBodyContains(t *testing.T, rr *httptest.ResponseRecorder, want string) {
+func AssertBodyEquals(t *testing.T, rr *httptest.ResponseRecorder, want string) {
 	t.Helper()
-	if !strings.Contains(rr.Body.String(), want) {
-		t.Errorf("got %s, want body to include %s", rr.Body.String(), want)
+	if rr.Body.String() != want {
+		t.Errorf("got %s, want body to be %s", rr.Body.String(), want)
 	}
 }
 
