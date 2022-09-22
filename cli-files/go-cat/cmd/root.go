@@ -50,7 +50,7 @@ func PrintFileContents(Writer io.Writer, path string) error {
 	}
 
 	file, err := os.ReadFile(path)
-	fmt.Fprint(Writer, string(file))
+	fmt.Fprintf(Writer, "%s", file)
 	if err != nil {
 		return err
 	}
