@@ -85,14 +85,14 @@ func HandleAuthenticated(wantUsername, wantPassword string) func(w http.Response
 
 }
 
-var limiter = rate.NewLimiter(100, 30)
-
-func HandleRateLimit(w http.ResponseWriter, r *http.Request) {
-	if !limiter.Allow() {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello, world"))
-	} else {
-		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte("429 - Too Many Requests"))
+func HandleRateLimit(limiter *rate.Limiter) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if limiter.Allow() {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Hello, world"))
+		} else {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte("429 - Too Many Requests"))
+		}
 	}
 }

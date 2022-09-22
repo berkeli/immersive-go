@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"golang.org/x/time/rate"
 )
 
 func TestMain(t *testing.T) {
@@ -94,13 +96,14 @@ func TestMain(t *testing.T) {
 
 	t.Run("GET /limited", func(t *testing.T) {
 		t.Run("test over the limit", func(t *testing.T) {
+			limiter := rate.NewLimiter(100, 30)
 			r := 100 //number of requests to the server
 			request, _ := http.NewRequest(http.MethodGet, "/limited", nil)
-			handler := http.HandlerFunc(HandleRateLimit)
+			handler := HandleRateLimit(limiter)
 			var responses []httptest.ResponseRecorder
 			for i := 0; i < r; i++ {
 				rr := httptest.NewRecorder()
-				handler.ServeHTTP(rr, request)
+				handler(rr, request)
 				responses = append(responses, *rr)
 			}
 
@@ -127,6 +130,16 @@ func TestMain(t *testing.T) {
 				t.Errorf("made %d requests, but only received %d responses", r, statusOK+statusTooManyRequests)
 			}
 		})
+	})
+
+	t.Run("Get /limited when over the limit", func(t *testing.T) {
+		limiter := rate.NewLimiter(0, 0)
+		request, _ := http.NewRequest(http.MethodGet, "/limited", nil)
+		rr := httptest.NewRecorder()
+		handler := HandleRateLimit(limiter)
+		handler(rr, request)
+
+		AssertStatusTooManyRequests(t, rr)
 	})
 }
 

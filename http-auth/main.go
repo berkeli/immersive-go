@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"golang.org/x/time/rate"
 )
 
 func exec() {
@@ -19,6 +20,7 @@ func exec() {
 func main() {
 	wantUsername := os.Getenv("USERNAME")
 	wantPassword := os.Getenv("PASSWORD")
+	limiter := rate.NewLimiter(100, 30)
 
 	http.HandleFunc("/", routes.IndexHandler)
 
@@ -30,7 +32,7 @@ func main() {
 
 	http.HandleFunc("/authenticated", routes.HandleAuthenticated(wantUsername, wantPassword))
 
-	http.HandleFunc("/limited", routes.HandleRateLimit)
+	http.HandleFunc("/limited", routes.HandleRateLimit(limiter))
 
 	err := http.ListenAndServe(":8090", nil)
 
