@@ -1,9 +1,10 @@
-// main.go
+/*
+Copyright © 2022 NAME HERE <EMAIL ADDRESS>
+
+*/
 package main
 
-import (
-	"go-ls/cmd"
-)
+import "go-ls/cmd"
 
 func main() {
 	cmd.Execute()

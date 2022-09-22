@@ -4,56 +4,51 @@ import (
 	"bytes"
 	"io/ioutil"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-var TestTable = []struct {
-	Name  string
+var TestTable = map[string]struct {
 	Args  []string
-	Want  string
+	Want  *string
 	Error string
 }{
-	{
-		Name:  "No path provided",
+	"No path provided": {
 		Args:  []string{},
-		Want:  "root.go\nroot_test.go\n",
+		Want:  StringToPointer("root.go\nroot_test.go"),
 		Error: "",
 	},
-	{
-		Name:  "Relative Path provided",
+	"Relative Path provided": {
 		Args:  []string{"../assets"},
-		Want:  "dew.txt\nfoo bar\nfor_you.txt\nrain.txt\n",
+		Want:  StringToPointer("dew.txt\nfoo bar\nfor_you.txt\nrain.txt"),
 		Error: "",
 	},
-	{
-		Name:  "File name provided",
+	"File name provided": {
 		Args:  []string{"../assets/dew.txt"},
-		Want:  "../assets/dew.txt",
-		Error: ErrNotADirectory,
+		Want:  StringToPointer("../assets/dew.txt"),
+		Error: "",
 	},
-	{
-		Name:  "Invalid path provided",
+	"Invalid path provided": {
 		Args:  []string{"../assets/invalid"},
-		Want:  "",
+		Want:  nil,
 		Error: ErrInvalidPath,
 	},
-	{
-		Name:  "output with -m flag",
+	"output with -m flag": {
 		Args:  []string{"-m", "../assets"},
-		Want:  "dew.txt, foo bar, for_you.txt, rain.txt\n",
+		Want:  StringToPointer("dew.txt, foo bar, for_you.txt, rain.txt"),
 		Error: "",
 	},
-	{
-		Name:  "output with -m flag and multiple folders",
+	"output with -m flag and multiple folders": {
 		Args:  []string{"-m", "../assets", "../cmd"},
-		Want:  "../assets: \ndew.txt, foo bar, for_you.txt, rain.txt\n\n../cmd: \nroot.go, root_test.go\n",
+		Want:  StringToPointer("../assets:\ndew.txt, foo bar, for_you.txt, rain.txt\n../cmd:\nroot.go, root_test.go"),
 		Error: "",
 	},
 }
 
 func TestGolsCmdFunc(t *testing.T) {
 
-	for _, tt := range TestTable {
-		t.Run(tt.Name, func(t *testing.T) {
+	for name, tt := range TestTable {
+		t.Run(name, func(t *testing.T) {
 			b := bytes.NewBufferString("")
 
 			// Run the command
@@ -61,7 +56,11 @@ func TestGolsCmdFunc(t *testing.T) {
 			golsCmd.SetArgs(tt.Args)
 			err := golsCmd.Execute()
 
-			AssertErrors(t, err, tt.Error)
+			if tt.Error != "" {
+				require.ErrorContains(t, err, tt.Error)
+			} else {
+				require.NoError(t, err)
+			}
 
 			got, err := ioutil.ReadAll(b)
 
@@ -70,23 +69,14 @@ func TestGolsCmdFunc(t *testing.T) {
 			}
 
 			// Check the output
-			if tt.Error == "" {
-				AssertStringsEqual(t, string(got), tt.Want)
+			if tt.Want != nil {
+				require.Equal(t, *tt.Want, string(got))
 			}
+
 		})
 	}
 }
 
-func AssertStringsEqual(t *testing.T, got, want string) {
-	t.Helper()
-	if got != want {
-		t.Errorf("got %q want %q", got, want)
-	}
-}
-
-func AssertErrors(t *testing.T, err error, want string) {
-	t.Helper()
-	if err != nil && err.Error() != want {
-		t.Errorf("got %q want %q", err.Error(), want)
-	}
+func StringToPointer(s string) *string {
+	return &s
 }
