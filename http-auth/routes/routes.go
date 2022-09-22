@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/joho/godotenv"
 	"golang.org/x/time/rate"
 )
 
@@ -17,17 +15,6 @@ const HTMLHeader = "<!DOCTYPE html><html>"
 
 func IsTestRun() bool {
 	return os.Getenv("EXECUTION_ENVIRONMENT") == "test"
-}
-
-func loadEnv() {
-	path := ""
-	if IsTestRun() {
-		path = "../.env"
-	}
-	err := godotenv.Load(path)
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,22 +64,21 @@ func Handle500(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("500 - Internal Server Error"))
 }
 
-func HandleAuthenticated(w http.ResponseWriter, r *http.Request) {
-	loadEnv()
+func HandleAuthenticated(wantUsername, wantPassword string) func(w http.ResponseWriter, r *http.Request) {
 
-	username := os.Getenv("USERNAME")
-	password := os.Getenv("PASSWORD")
+	return func(w http.ResponseWriter, r *http.Request) {
 
-	user, pass, ok := r.BasicAuth()
+		gotUsername, gotPassword, ok := r.BasicAuth()
 
-	if !ok || user != username || pass != password {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("401 - Unauthorized"))
-		return
+		if !ok || gotUsername != wantUsername || gotPassword != wantPassword {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("401 - Unauthorized"))
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(fmt.Sprintf("Hello, %s", gotUsername)))
 	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Hello, %s", username)))
 
 }
 

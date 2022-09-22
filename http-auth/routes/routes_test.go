@@ -64,7 +64,7 @@ func TestMain(t *testing.T) {
 			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(HandleAuthenticated)
+			handler := http.HandlerFunc(HandleAuthenticated("test", "test"))
 
 			handler.ServeHTTP(rr, request)
 
@@ -77,7 +77,7 @@ func TestMain(t *testing.T) {
 			request.Header.Add("Authorization", "Basic invalid")
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(HandleAuthenticated)
+			handler := http.HandlerFunc(HandleAuthenticated("test", "test"))
 
 			handler.ServeHTTP(rr, request)
 
@@ -90,7 +90,7 @@ func TestMain(t *testing.T) {
 			request.Header.Add("Authorization", "Basic dGVzdHVzZXI6c29tZXN0cm9uZ1BXRA==")
 			rr := httptest.NewRecorder()
 
-			handler := http.HandlerFunc(HandleAuthenticated)
+			handler := http.HandlerFunc(HandleAuthenticated("testuser", "somestrongPWD"))
 
 			handler.ServeHTTP(rr, request)
 

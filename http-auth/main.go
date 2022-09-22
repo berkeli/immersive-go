@@ -2,10 +2,24 @@ package main
 
 import (
 	"http-auth/routes"
+	"log"
 	"net/http"
+	"os"
+
+	"github.com/joho/godotenv"
 )
 
+func exec() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+}
+
 func main() {
+	wantUsername := os.Getenv("USERNAME")
+	wantPassword := os.Getenv("PASSWORD")
+
 	http.HandleFunc("/", routes.IndexHandler)
 
 	http.HandleFunc("/200", routes.Handle200)
@@ -14,9 +28,13 @@ func main() {
 
 	http.HandleFunc("/500", routes.Handle500)
 
-	http.HandleFunc("/authenticated", routes.HandleAuthenticated)
+	http.HandleFunc("/authenticated", routes.HandleAuthenticated(wantUsername, wantPassword))
 
 	http.HandleFunc("/limited", routes.HandleRateLimit)
 
-	http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8090", nil)
+
+	if err != nil {
+		panic(err)
+	}
 }
