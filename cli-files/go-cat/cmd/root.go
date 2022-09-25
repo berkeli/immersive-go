@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -49,8 +48,9 @@ func PrintFileContents(Writer io.Writer, path string) error {
 		return ErrDir
 	}
 
-	file, err := os.ReadFile(path)
-	fmt.Fprintf(Writer, "%s", file)
+	file, err := os.Open(path)
+	_, err = io.Copy(Writer, file)
+
 	if err != nil {
 		return err
 	}

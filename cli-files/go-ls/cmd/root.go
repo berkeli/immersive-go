@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
+	"github.com/hashicorp/go-multierror"
 	"github.com/spf13/cobra"
 )
 
@@ -15,14 +15,8 @@ const (
 	ErrCouldNotReadDirectory = "Could not read directory"
 )
 
-var (
-	flagM bool
-)
-
 func Execute() {
-	if err := golsCmd.Execute(); err != nil {
-		os.Exit(-1)
-	}
+	cobra.CheckErr(golsCmd.Execute())
 }
 
 var golsCmd = &cobra.Command{
@@ -33,19 +27,24 @@ var golsCmd = &cobra.Command{
 }
 
 func init() {
-	golsCmd.Flags().BoolVarP(&flagM, "m", "m", false, "Use this flag if you would like the output to be comma separated instead of new lines.")
+	GoLsCmdFlags(golsCmd)
 }
 
 func GolsCmdFunc(cmd *cobra.Command, args []string) error {
 	var (
-		errCollection error    = nil
+		ErrCollection *multierror.Error
 		Delimeter     string   = "\n"
 		paths         []string = args
 	)
 
 	Writer := cmd.OutOrStdout()
 
-	if flagM {
+	m, err := cmd.Flags().GetBool("m")
+	if err != nil {
+		return err
+	}
+
+	if m {
 		Delimeter = ", "
 	}
 
@@ -61,10 +60,7 @@ func GolsCmdFunc(cmd *cobra.Command, args []string) error {
 		out, err := ListFolderContents(path, Delimeter)
 
 		if err != nil {
-			if errCollection == nil {
-				errCollection = errors.New("")
-			}
-			errCollection = errors.Wrap(errCollection, "\n"+err.Error())
+			ErrCollection = multierror.Append(ErrCollection, err)
 			continue
 		}
 
@@ -78,9 +74,10 @@ func GolsCmdFunc(cmd *cobra.Command, args []string) error {
 			fmt.Fprintln(Writer, path+":")
 		}
 
-		fmt.Fprint(Writer, out+endOfLine)
+		fmt.Fprintln(Writer, out+endOfLine)
 	}
-	return errCollection
+
+	return ErrCollection.ErrorOrNil()
 }
 
 func ListFolderContents(path, delimeter string) (string, error) {
@@ -107,4 +104,8 @@ func ListFolderContents(path, delimeter string) (string, error) {
 	}
 
 	return out, nil
+}
+
+func GoLsCmdFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolP("m", "m", false, "Use this flag if you would like the output to be comma separated instead of new lines.")
 }
