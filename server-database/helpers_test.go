@@ -29,12 +29,12 @@ func TestValidateIndent(t *testing.T) {
 	t.Run("Negative indent", func(t *testing.T) {
 		_, err := ValidateIndent("-1")
 		require.Error(t, err)
-		require.ErrorIs(t, err, errors.New("Indent cannot be negative: -1"))
+		require.Equal(t, err, errors.New("Indent cannot be negative: -1"))
 	})
 
 	t.Run("Invalid indent", func(t *testing.T) {
 		_, err := ValidateIndent("a")
 		require.Error(t, err)
-		require.ErrorIs(t, err, errors.New("Unable to parse indent: a"))
+		require.Equal(t, err, errors.New("Unable to parse indent: a"))
 	})
 }
