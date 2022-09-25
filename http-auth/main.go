@@ -2,6 +2,7 @@ package main
 
 import (
 	"http-auth/routes"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func exec() {
+func init() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -22,7 +23,7 @@ func main() {
 	wantPassword := os.Getenv("PASSWORD")
 	limiter := rate.NewLimiter(100, 30)
 
-	http.HandleFunc("/", routes.IndexHandler)
+	http.HandleFunc("/", routes.IndexHandler(io.ReadAll))
 
 	http.HandleFunc("/200", routes.Handle200)
 

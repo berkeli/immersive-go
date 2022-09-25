@@ -5,55 +5,58 @@ import (
 	"html"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"golang.org/x/time/rate"
 )
 
-const HTMLHeader = "<!DOCTYPE html><html>"
+const HTMLHeader = `<!DOCTYPE html>
+<html>
+`
 
-func IsTestRun() bool {
-	return os.Getenv("EXECUTION_ENVIRONMENT") == "test"
-}
+func IndexHandler(ReadAll func(r io.Reader) ([]byte, error)) func(w http.ResponseWriter, r *http.Request) {
 
-func IndexHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		w.Header().Set("Content-Type", "text/html")
-		b := "<em>Hello World</em>"
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			w.Header().Set("Content-Type", "text/html")
+			b := "<em>Hello World</em>"
 
-		queryParams := r.URL.Query()
+			queryParams := r.URL.Query()
 
-		if len(queryParams) > 0 {
-			b = "<h1>Query Params</h1><ul>"
-			for key, value := range queryParams {
-				b += fmt.Sprintf("<li>%s: %s</li>", html.EscapeString(key), html.EscapeString(strings.Join(value, ", ")))
+			if len(queryParams) > 0 {
+				b = `<h1>Query Params</h1>
+			<ul>
+			`
+				for key, value := range queryParams {
+					b += fmt.Sprintf("<li>%s: %s</li>", html.EscapeString(key), html.EscapeString(strings.Join(value, ", ")))
+				}
+				b += "</ul>"
 			}
-			b += "</ul>"
+
+			body := fmt.Sprintf("%s%s", HTMLHeader, b)
+			w.Write([]byte(body))
 		}
 
-		body := fmt.Sprintf("%s%s", HTMLHeader, b)
-		w.Write([]byte(body))
-	}
+		if r.Method == "POST" {
+			w.Header().Set("Content-Type", "text/html")
+			returnMessage := ""
 
-	if r.Method == "POST" {
-		w.Header().Set("Content-Type", "text/html")
-		returnMessage := ""
+			b, err := ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Error reading request body"))
+				return
+			}
 
-		b, err := io.ReadAll(r.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Error reading request body"))
+			if b == nil {
+				returnMessage = "<em>Hello World</em>"
+			} else {
+				returnMessage = html.EscapeString(string(b))
+			}
+
+			body := fmt.Sprintf("%s%s", HTMLHeader, returnMessage)
+			w.Write([]byte(body))
 		}
-
-		if b == nil {
-			returnMessage = html.EscapeString("<em>Hello World</em>")
-		} else {
-			returnMessage = html.EscapeString(string(b))
-		}
-
-		body := fmt.Sprintf("%s%s", HTMLHeader, returnMessage)
-		w.Write([]byte(body))
 	}
 }
 
@@ -74,6 +77,7 @@ func HandleAuthenticated(wantUsername, wantPassword string) func(w http.Response
 		gotUsername, gotPassword, ok := r.BasicAuth()
 
 		if !ok || gotUsername != wantUsername || gotPassword != wantPassword {
+			w.Header().Set("WWW-Authenticate", `Basic realm="protected", charset="UTF-8"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte("401 - Unauthorized"))
 			return

@@ -7,79 +7,99 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
+const DB_URL = "postgresql://postgres:postgres@localhost:5432/go_server_test_db"
+
+func setupSuite(tb testing.TB) (func(tb testing.TB), func()) {
+
+	// setup the database for testing
+
+	closer := envSetter(map[string]string{
+		"DB_URL": DB_URL,
+	})
+
+	conn := ConnectToDB()
+
+	_, err := conn.Exec(context.Background(), "DELETE from images")
+
+	if err != nil {
+		tb.Fatalf("Setup Error: Unable to delete from images: %s", err.Error())
+	}
+
+	_, err = conn.Exec(context.Background(), `INSERT INTO images (title, url, alt_text) 
+		VALUES ('A cute kitten', 'https://placekitten.com/200/300', 'A kitten looking mischievous'), 
+		('A cute puppy', 'https://placedog.net/200/300', 'A puppy looking mischievous')`,
+	)
+
+	if err != nil {
+		tb.Fatalf("Setup Error: Unable to insert into images: %s", err.Error())
+	}
+
+	return func(tb testing.TB) {
+		// teardown the database after testing
+		_, err := conn.Exec(context.Background(), "DELETE from images")
+
+		if err != nil {
+			tb.Fatalf("Teardown Error: Unable to delete from images: %s", err.Error())
+		}
+	}, closer
+}
+
 func TestImage(t *testing.T) {
-	image := Image{"title", "altText", "url"}
 
-	AssertStrings(t, image.Title, "title")
+	title, altText, url := "title", "alt_text", "url"
 
-	AssertStrings(t, image.AltText, "altText")
+	image := Image{
+		Title:   title,
+		AltText: altText,
+		Url:     url,
+	}
 
-	AssertStrings(t, image.Url, "url")
-
-}
-
-func TestLoadENV(t *testing.T) {
-	closer := envSetter(map[string]string{
-		"EXECUTION_ENVIRONMENT": "test",
-	})
-	LoadENV()
-	AssertStrings(t, os.Getenv("EXECUTION_ENVIRONMENT"), "test")
-	t.Cleanup(closer)
-}
-
-func TestConnectToDB(t *testing.T) {
-	closer := envSetter(map[string]string{
-		"EXECUTION_ENVIRONMENT": "test",
-		"DB_URL":                "postgresql://postgres:postgres@localhost:5432/go_server_test_db",
-	})
-
-	LoadENV()
-	ConnectToDB()
-	defer conn.Close(context.Background())
-
-	t.Cleanup(closer)
+	require.Equal(t, title, image.Title)
+	require.Equal(t, altText, image.AltText)
+	require.Equal(t, url, image.Url)
 }
 
 func TestMain(t *testing.T) {
 
-	closer := envSetter(map[string]string{
-		"EXECUTION_ENVIRONMENT": "test",
-		"DB_URL":                "postgresql://postgres:postgres@localhost:5432/go_server_test_db",
-	})
+	teardownSuite, closer := setupSuite(t)
+	defer teardownSuite(t)
 
-	LoadENV()
-	ConnectToDB()
+	s := &Server{conn: ConnectToDB()}
 
 	t.Run("Get /", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
 		response := httptest.NewRecorder()
 
-		IndexHandler(response, request)
+		s.IndexHandler(response, request)
 
 		got := response.Body.String()
 		want := "Hello World"
 
-		AssertStrings(t, got, want)
+		require.Equal(t, want, got)
 	})
 
 	t.Run("Get /images.json", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/images.json", nil)
 		response := httptest.NewRecorder()
 
-		ImagesHandler(response, request)
+		s.ImagesHandler(response, request)
 
 		var got []Image
 
 		decoder := json.NewDecoder(response.Body)
 		decoder.Decode(&got)
 
-		if len(got) == 0 {
-			t.Errorf("Expected GET /images.json to have images, received %v", len(got))
+		var TestDbData = []Image{
+			{"A cute kitten", "A kitten looking mischievous", "https://placekitten.com/200/300"},
+			{"A cute puppy", "A puppy looking mischievous", "https://placedog.net/200/300"},
 		}
+
+		require.ElementsMatch(t, got, TestDbData)
 	})
 
 	t.Run("POST /images.json", func(t *testing.T) {
@@ -92,30 +112,76 @@ func TestMain(t *testing.T) {
 		request.Header.Set("Content-Type", "application/json")
 		response := httptest.NewRecorder()
 
-		ImagesHandler(response, request)
+		s.ImagesHandler(response, request)
 
 		var got Image
 
 		decoder := json.NewDecoder(response.Body)
 		decoder.Decode(&got)
 
-		AssertImages(t, got, want)
+		require.Equal(t, want, got)
+
+	})
+
+	t.Run("POST /images.json and fetch from DB", func(t *testing.T) {
+
+		imagesBefore, err := FetchImages(s.conn)
+
+		if err != nil {
+			t.Fatalf("Error: %s", err.Error())
+		}
+
+		newImage := Image{"New test image", "test", "test"}
+
+		b, err := json.Marshal(newImage)
+		if err != nil {
+			t.Fatalf("Error: %s", err.Error())
+		}
+
+		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(b))
+		if err != nil {
+			t.Fatalf("Error: %s", err.Error())
+		}
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+
+		s.ImagesHandler(response, request)
+
+		imagesAfter, err := FetchImages(s.conn)
+
+		if err != nil {
+			t.Fatalf("Error: %s", err.Error())
+		}
+
+		require.Equal(t, len(imagesBefore)+1, len(imagesAfter))
+
+		require.Contains(t, imagesAfter, newImage)
 
 	})
 
 	t.Cleanup(closer)
 }
 
-func AssertStrings(t *testing.T, got, want string) {
-	if got != want {
-		t.Errorf("Expected %s, received %s", want, got)
-	}
-}
+func TestFetchImages(t *testing.T) {
+	teardownSuite, closer := setupSuite(t)
+	defer teardownSuite(t)
 
-func AssertImages(t *testing.T, got, want Image) {
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Expected %v, received %v", want, got)
+	conn := ConnectToDB()
+
+	images, err := FetchImages(conn)
+
+	if err != nil {
+		t.Fatalf("Error: %s", err.Error())
 	}
+
+	var TestDbData = []Image{
+		{"A cute kitten", "A kitten looking mischievous", "https://placekitten.com/200/300"},
+		{"A cute puppy", "A puppy looking mischievous", "https://placedog.net/200/300"},
+	}
+
+	require.ElementsMatch(t, images, TestDbData)
+
+	t.Cleanup(closer)
 }
 
 func envSetter(envs map[string]string) (closer func()) {

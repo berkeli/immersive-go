@@ -1,7 +1,8 @@
 package routes
 
 import (
-	"html"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,24 +16,52 @@ func TestMain(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
 		rr := httptest.NewRecorder()
 
-		IndexHandler(rr, request)
+		handler := IndexHandler(io.ReadAll)
+		handler(rr, request)
 
 		AssertStatusOK(t, rr)
 	})
 
 	t.Run("POST /", func(t *testing.T) {
-		bodyHTML := "<em>Hello Test</em>"
-		b := strings.NewReader(bodyHTML)
-		request, _ := http.NewRequest(http.MethodPost, "/", b)
-		request.Header.Add("Content-Type", "text/html")
+		t.Run("should return status 200", func(t *testing.T) {
+			bodyHTML := "<em>Hello Test</em>"
+			b := strings.NewReader(bodyHTML)
+			request, _ := http.NewRequest(http.MethodPost, "/", b)
+			request.Header.Add("Content-Type", "text/html")
 
-		rr := httptest.NewRecorder()
+			rr := httptest.NewRecorder()
 
-		IndexHandler(rr, request)
+			handler := IndexHandler(io.ReadAll)
+			handler(rr, request)
 
-		AssertStatusOK(t, rr)
+			AssertStatusOK(t, rr)
 
-		AssertBodyEquals(t, rr, HTMLHeader+html.EscapeString(bodyHTML))
+			want := `<!DOCTYPE html>
+<html>
+&lt;em&gt;Hello Test&lt;/em&gt;`
+
+			AssertBodyEquals(t, rr, want)
+		})
+
+		t.Run("should return status 500", func(t *testing.T) {
+
+			request, _ := http.NewRequest(http.MethodPost, "/", strings.NewReader(""))
+			request.Header.Add("Content-Type", "text/html")
+
+			rr := httptest.NewRecorder()
+
+			mockReader := func(r io.Reader) ([]byte, error) {
+				return nil, errors.New("error")
+			}
+
+			handler := IndexHandler(mockReader)
+
+			handler(rr, request)
+
+			AssertStatusInternalServerError(t, rr)
+			AssertBodyEquals(t, rr, "Error reading request body")
+		})
+
 	})
 
 	t.Run("GET /200", func(t *testing.T) {
@@ -69,7 +98,7 @@ func TestMain(t *testing.T) {
 		t.Run("invalid authorisation provided", func(t *testing.T) {
 
 			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
-			request.Header.Add("Authorization", "Basic invalid")
+			request.SetBasicAuth("test", "invalid")
 			rr := httptest.NewRecorder()
 
 			handler := HandleAuthenticated("test", "test")
@@ -81,11 +110,14 @@ func TestMain(t *testing.T) {
 
 		t.Run("valid authorisation provided", func(t *testing.T) {
 
+			username, password := "testuser", "somestrongPWD!"
+
 			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
-			request.Header.Add("Authorization", "Basic dGVzdHVzZXI6c29tZXN0cm9uZ1BXRA==")
+
+			request.SetBasicAuth(username, password)
 			rr := httptest.NewRecorder()
 
-			handler := HandleAuthenticated("testuser", "somestrongPWD")
+			handler := HandleAuthenticated(username, password)
 
 			handler(rr, request)
 
