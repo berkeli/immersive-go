@@ -2,7 +2,6 @@ package main
 
 import (
 	"http-auth/routes"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -11,31 +10,31 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func init() {
+func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatal("Error loading .env file, please provide one with Username and Password set")
 	}
-}
 
-func main() {
-	wantUsername := os.Getenv("USERNAME")
-	wantPassword := os.Getenv("PASSWORD")
-	limiter := rate.NewLimiter(100, 30)
+	c := routes.Controllers{
+		Username: os.Getenv("USERNAME"),
+		Password: os.Getenv("PASSWORD"),
+		Limiter:  rate.NewLimiter(100, 30),
+	}
 
-	http.HandleFunc("/", routes.IndexHandler(io.ReadAll))
+	http.HandleFunc("/", c.IndexHandler)
 
-	http.HandleFunc("/200", routes.Handle200)
+	http.HandleFunc("/200", c.Handle200)
 
 	http.Handle("/404", http.NotFoundHandler())
 
-	http.HandleFunc("/500", routes.Handle500)
+	http.HandleFunc("/500", c.Handle500)
 
-	http.HandleFunc("/authenticated", routes.HandleAuthenticated(wantUsername, wantPassword))
+	http.HandleFunc("/authenticated", c.HandleAuthenticated)
 
-	http.HandleFunc("/limited", routes.HandleRateLimit(limiter))
+	http.HandleFunc("/limited", c.HandleRateLimit)
 
-	err := http.ListenAndServe(":8090", nil)
+	err = http.ListenAndServe(":8090", nil)
 
 	if err != nil {
 		panic(err)

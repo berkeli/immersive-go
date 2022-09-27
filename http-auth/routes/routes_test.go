@@ -2,7 +2,6 @@ package routes
 
 import (
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,13 +10,25 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type MockReader struct{}
+
+func (r MockReader) Read(p []byte) (int, error) {
+	return 0, errors.New("some error")
+}
+
 func TestMain(t *testing.T) {
+
+	c := Controllers{
+		Username: "testUN",
+		Password: "testPWD",
+		Limiter:  rate.NewLimiter(100, 30),
+	}
+
 	t.Run("GET /", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
 		rr := httptest.NewRecorder()
 
-		handler := IndexHandler(io.ReadAll)
-		handler(rr, request)
+		c.IndexHandler(rr, request)
 
 		AssertStatusOK(t, rr)
 	})
@@ -31,8 +42,7 @@ func TestMain(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			handler := IndexHandler(io.ReadAll)
-			handler(rr, request)
+			c.IndexHandler(rr, request)
 
 			AssertStatusOK(t, rr)
 
@@ -45,18 +55,14 @@ func TestMain(t *testing.T) {
 
 		t.Run("should return status 500", func(t *testing.T) {
 
-			request, _ := http.NewRequest(http.MethodPost, "/", strings.NewReader(""))
+			m := MockReader{}
+
+			request, _ := http.NewRequest(http.MethodPost, "/", m)
 			request.Header.Add("Content-Type", "text/html")
 
 			rr := httptest.NewRecorder()
 
-			mockReader := func(r io.Reader) ([]byte, error) {
-				return nil, errors.New("error")
-			}
-
-			handler := IndexHandler(mockReader)
-
-			handler(rr, request)
+			c.IndexHandler(rr, request)
 
 			AssertStatusInternalServerError(t, rr)
 			AssertBodyEquals(t, rr, "Error reading request body")
@@ -68,7 +74,7 @@ func TestMain(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/200", nil)
 		rr := httptest.NewRecorder()
 
-		Handle200(rr, request)
+		c.Handle200(rr, request)
 
 		AssertStatusOK(t, rr)
 	})
@@ -77,7 +83,7 @@ func TestMain(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/500", nil)
 		rr := httptest.NewRecorder()
 
-		Handle500(rr, request)
+		c.Handle500(rr, request)
 
 		AssertStatusInternalServerError(t, rr)
 	})
@@ -88,9 +94,7 @@ func TestMain(t *testing.T) {
 			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
 			rr := httptest.NewRecorder()
 
-			handler := HandleAuthenticated("test", "test")
-
-			handler(rr, request)
+			c.HandleAuthenticated(rr, request)
 
 			AssertStatusUnauthorized(t, rr)
 		})
@@ -101,41 +105,35 @@ func TestMain(t *testing.T) {
 			request.SetBasicAuth("test", "invalid")
 			rr := httptest.NewRecorder()
 
-			handler := HandleAuthenticated("test", "test")
-
-			handler(rr, request)
+			c.HandleAuthenticated(rr, request)
 
 			AssertStatusUnauthorized(t, rr)
 		})
 
 		t.Run("valid authorisation provided", func(t *testing.T) {
 
-			username, password := "testuser", "somestrongPWD!"
+			username, password := "testUN", "testPWD"
 
 			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
 
 			request.SetBasicAuth(username, password)
 			rr := httptest.NewRecorder()
 
-			handler := HandleAuthenticated(username, password)
-
-			handler(rr, request)
+			c.HandleAuthenticated(rr, request)
 
 			AssertStatusOK(t, rr)
-			AssertBodyEquals(t, rr, "Hello, testuser")
+			AssertBodyEquals(t, rr, "Hello, testUN")
 		})
 	})
 
 	t.Run("GET /limited", func(t *testing.T) {
 		t.Run("test over the limit", func(t *testing.T) {
-			limiter := rate.NewLimiter(100, 30)
 			r := 100 //number of requests to the server
 			request, _ := http.NewRequest(http.MethodGet, "/limited", nil)
-			handler := HandleRateLimit(limiter)
 			var responses []httptest.ResponseRecorder
 			for i := 0; i < r; i++ {
 				rr := httptest.NewRecorder()
-				handler(rr, request)
+				c.HandleRateLimit(rr, request)
 				responses = append(responses, *rr)
 			}
 
@@ -165,11 +163,12 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("Get /limited when over the limit", func(t *testing.T) {
-		limiter := rate.NewLimiter(0, 0)
+		c = Controllers{
+			Limiter: rate.NewLimiter(0, 0),
+		}
 		request, _ := http.NewRequest(http.MethodGet, "/limited", nil)
 		rr := httptest.NewRecorder()
-		handler := HandleRateLimit(limiter)
-		handler(rr, request)
+		c.HandleRateLimit(rr, request)
 
 		AssertStatusTooManyRequests(t, rr)
 	})
