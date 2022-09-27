@@ -14,6 +14,19 @@ import (
 
 const DB_URL = "postgresql://postgres:postgres@localhost:5432/go_server_test_db"
 
+var TestDbData = []Image{
+	{
+		Title:   "A cute kitten",
+		AltText: "A kitten looking mischievous",
+		Url:     "https://placekitten.com/200/300",
+	},
+	{
+		Title:   "A cute puppy",
+		AltText: "A puppy looking mischievous",
+		Url:     "https://placedog.net/200/300",
+	},
+}
+
 func setupSuite(tb testing.TB) (func(tb testing.TB), func()) {
 
 	// setup the database for testing
@@ -92,23 +105,30 @@ func TestMain(t *testing.T) {
 		var got []Image
 
 		decoder := json.NewDecoder(response.Body)
-		decoder.Decode(&got)
+		err := decoder.Decode(&got)
 
-		var TestDbData = []Image{
-			{"A cute kitten", "A kitten looking mischievous", "https://placekitten.com/200/300"},
-			{"A cute puppy", "A puppy looking mischievous", "https://placedog.net/200/300"},
-		}
+		require.NoError(t, err)
 
 		require.ElementsMatch(t, got, TestDbData)
 	})
 
 	t.Run("POST /images.json", func(t *testing.T) {
 
-		want := Image{"title", "alt_text", "url"}
+		title, altText, url := "title", "alt_text", "url"
 
-		b, _ := json.Marshal(want)
+		want := Image{
+			Title:   title,
+			AltText: altText,
+			Url:     url,
+		}
 
-		request, _ := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(b))
+		b, err := json.Marshal(want)
+
+		require.NoError(t, err)
+
+		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(b))
+		require.NoError(t, err)
+
 		request.Header.Set("Content-Type", "application/json")
 		response := httptest.NewRecorder()
 
@@ -127,21 +147,12 @@ func TestMain(t *testing.T) {
 
 		imagesBefore, err := FetchImages(s.conn)
 
-		if err != nil {
-			t.Fatalf("Error: %s", err.Error())
-		}
+		require.NoError(t, err)
 
-		newImage := Image{"New test image", "test", "test"}
+		newImage := []byte(`{"Title":"New test image","AltText":"alt_text","Url":"test"}`)
 
-		b, err := json.Marshal(newImage)
-		if err != nil {
-			t.Fatalf("Error: %s", err.Error())
-		}
-
-		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(b))
-		if err != nil {
-			t.Fatalf("Error: %s", err.Error())
-		}
+		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(newImage))
+		require.NoError(t, err)
 		request.Header.Set("Content-Type", "application/json")
 		response := httptest.NewRecorder()
 
@@ -149,13 +160,17 @@ func TestMain(t *testing.T) {
 
 		imagesAfter, err := FetchImages(s.conn)
 
-		if err != nil {
-			t.Fatalf("Error: %s", err.Error())
-		}
+		require.NoError(t, err)
 
 		require.Equal(t, len(imagesBefore)+1, len(imagesAfter))
 
-		require.Contains(t, imagesAfter, newImage)
+		img := Image{
+			Title:   "New test image",
+			AltText: "alt_text",
+			Url:     "test",
+		}
+
+		require.Contains(t, imagesAfter, img)
 
 	})
 
@@ -170,14 +185,7 @@ func TestFetchImages(t *testing.T) {
 
 	images, err := FetchImages(conn)
 
-	if err != nil {
-		t.Fatalf("Error: %s", err.Error())
-	}
-
-	var TestDbData = []Image{
-		{"A cute kitten", "A kitten looking mischievous", "https://placekitten.com/200/300"},
-		{"A cute puppy", "A puppy looking mischievous", "https://placedog.net/200/300"},
-	}
+	require.NoError(t, err)
 
 	require.ElementsMatch(t, images, TestDbData)
 

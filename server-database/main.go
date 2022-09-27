@@ -22,20 +22,18 @@ type Server struct {
 	conn *pgx.Conn
 }
 
-func init() {
+func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Hello World"))
+}
+
+func main() {
 	err := godotenv.Load()
 	DB_URL := os.Getenv("DB_URL")
 	if err != nil || DB_URL == "" {
 		os.Stderr.WriteString("Error loading .env file, please create one with 'DB_URL' set to your database connection string")
 		os.Exit(1)
 	}
-}
 
-func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello World"))
-}
-
-func main() {
 	conn := ConnectToDB()
 	defer conn.Close(context.Background())
 
@@ -76,7 +74,7 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 		b, err := json.MarshalIndent(images, "", strings.Repeat(" ", indent))
 
 		if err != nil {
-			log.Print("Error Parsing json", err)
+			log.Print("Error serializing json", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
