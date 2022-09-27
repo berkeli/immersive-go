@@ -6,13 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-const DB_URL = "postgresql://postgres:postgres@localhost:5432/go_server_test_db"
+const TEST_DB_URL = "postgresql://postgres:postgres@localhost:5432/go_server_test_db"
 
 var TestDbData = []Image{
 	{
@@ -27,15 +26,9 @@ var TestDbData = []Image{
 	},
 }
 
-func setupSuite(tb testing.TB) (func(tb testing.TB), func()) {
+func setupSuite(tb testing.TB) func(tb testing.TB) {
 
-	// setup the database for testing
-
-	closer := envSetter(map[string]string{
-		"DB_URL": DB_URL,
-	})
-
-	conn := ConnectToDB()
+	conn := ConnectToDB(TEST_DB_URL)
 
 	_, err := conn.Exec(context.Background(), "DELETE from images")
 
@@ -59,7 +52,7 @@ func setupSuite(tb testing.TB) (func(tb testing.TB), func()) {
 		if err != nil {
 			tb.Fatalf("Teardown Error: Unable to delete from images: %s", err.Error())
 		}
-	}, closer
+	}
 }
 
 func TestImage(t *testing.T) {
@@ -79,10 +72,10 @@ func TestImage(t *testing.T) {
 
 func TestMain(t *testing.T) {
 
-	teardownSuite, closer := setupSuite(t)
+	teardownSuite := setupSuite(t)
 	defer teardownSuite(t)
 
-	s := &Server{conn: ConnectToDB()}
+	s := &Server{conn: ConnectToDB(TEST_DB_URL)}
 
 	t.Run("Get /", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -174,42 +167,17 @@ func TestMain(t *testing.T) {
 
 	})
 
-	t.Cleanup(closer)
 }
 
 func TestFetchImages(t *testing.T) {
-	teardownSuite, closer := setupSuite(t)
+	teardownSuite := setupSuite(t)
 	defer teardownSuite(t)
 
-	conn := ConnectToDB()
+	conn := ConnectToDB(TEST_DB_URL)
 
 	images, err := FetchImages(conn)
 
 	require.NoError(t, err)
 
 	require.ElementsMatch(t, images, TestDbData)
-
-	t.Cleanup(closer)
-}
-
-func envSetter(envs map[string]string) (closer func()) {
-	originalEnvs := map[string]string{}
-
-	for name, value := range envs {
-		if originalValue, ok := os.LookupEnv(name); ok {
-			originalEnvs[name] = originalValue
-		}
-		_ = os.Setenv(name, value)
-	}
-
-	return func() {
-		for name := range envs {
-			origValue, has := originalEnvs[name]
-			if has {
-				_ = os.Setenv(name, origValue)
-			} else {
-				_ = os.Unsetenv(name)
-			}
-		}
-	}
 }

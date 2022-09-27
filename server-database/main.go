@@ -34,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	conn := ConnectToDB()
+	conn := ConnectToDB(DB_URL)
 	defer conn.Close(context.Background())
 
 	s := &Server{conn: conn}

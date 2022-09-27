@@ -9,14 +9,8 @@ import (
 )
 
 func TestConnectToDB(t *testing.T) {
-	closer := envSetter(map[string]string{
-		"DB_URL": DB_URL,
-	})
-
-	conn := ConnectToDB()
-	defer conn.Close(context.Background())
-
-	t.Cleanup(closer)
+	conn := ConnectToDB(TEST_DB_URL)
+	conn.Close(context.Background())
 }
 
 func TestValidateIndent(t *testing.T) {

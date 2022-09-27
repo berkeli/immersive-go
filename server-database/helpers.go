@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 
 	"github.com/jackc/pgx/v4"
 )
 
-func ConnectToDB() *pgx.Conn {
-	DB_URL := os.Getenv("DB_URL")
+func ConnectToDB(DB_URL string) *pgx.Conn {
 	conn, err := pgx.Connect(context.Background(), DB_URL)
 
 	if err != nil {
