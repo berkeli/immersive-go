@@ -1,23 +1,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"strconv"
-
-	"github.com/jackc/pgx/v4"
 )
-
-func ConnectToDB(DB_URL string) *pgx.Conn {
-	conn, err := pgx.Connect(context.Background(), DB_URL)
-
-	if err != nil {
-		log.Fatalf("Unable to connect to database: %s", err.Error())
-	}
-
-	return conn
-}
 
 func ValidateIndent(indent string) (int, error) {
 	i, err := strconv.Atoi(indent)

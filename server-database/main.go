@@ -34,7 +34,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	conn := ConnectToDB(DB_URL)
+	conn, err := pgx.Connect(context.Background(), DB_URL)
+
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %s", err.Error())
+	}
 	defer conn.Close(context.Background())
 
 	s := &Server{conn: conn}
@@ -87,7 +91,7 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 		err := decoder.Decode(&image)
 		if err != nil {
 			log.Print("Error parsing json", err)
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 

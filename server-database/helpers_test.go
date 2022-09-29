@@ -1,17 +1,11 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-func TestConnectToDB(t *testing.T) {
-	conn := ConnectToDB(TEST_DB_URL)
-	conn.Close(context.Background())
-}
 
 func TestValidateIndent(t *testing.T) {
 	t.Run("Valid indent", func(t *testing.T) {

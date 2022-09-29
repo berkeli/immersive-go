@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,9 +29,13 @@ var TestDbData = []Image{
 
 func setupSuite(tb testing.TB) func(tb testing.TB) {
 
-	conn := ConnectToDB(TEST_DB_URL)
+	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
 
-	_, err := conn.Exec(context.Background(), "DELETE from images")
+	if err != nil {
+		tb.Fatalf("Unable to connect to database: %s", err.Error())
+	}
+
+	_, err = conn.Exec(context.Background(), "DELETE from images")
 
 	if err != nil {
 		tb.Fatalf("Setup Error: Unable to delete from images: %s", err.Error())
@@ -75,7 +80,10 @@ func TestMain(t *testing.T) {
 	teardownSuite := setupSuite(t)
 	defer teardownSuite(t)
 
-	s := &Server{conn: ConnectToDB(TEST_DB_URL)}
+	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
+	require.NoError(t, err)
+
+	s := &Server{conn: conn}
 
 	t.Run("Get /", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -105,6 +113,43 @@ func TestMain(t *testing.T) {
 		require.ElementsMatch(t, got, TestDbData)
 	})
 
+	t.Run("Get /images.json with indent", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/images.json?indent=2", nil)
+		response := httptest.NewRecorder()
+
+		s.ImagesHandler(response, request)
+
+		want := `[
+  {
+    "Title": "A cute kitten",
+    "AltText": "A kitten looking mischievous",
+    "Url": "https://placekitten.com/200/300"
+  },
+  {
+    "Title": "A cute puppy",
+    "AltText": "A puppy looking mischievous",
+    "Url": "https://placedog.net/200/300"
+  }
+]`
+
+		require.NoError(t, err)
+
+		require.Equal(t, want, response.Body.String())
+	})
+
+	t.Run("Get /images.json with invalid indent", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/images.json?indent=-2", nil)
+		response := httptest.NewRecorder()
+
+		s.ImagesHandler(response, request)
+
+		require.Equal(t, response.Result().StatusCode, http.StatusBadRequest)
+
+		want := "Indent cannot be negative: -2"
+
+		require.Equal(t, want, response.Body.String())
+	})
+
 	t.Run("POST /images.json", func(t *testing.T) {
 
 		title, altText, url := "title", "alt_text", "url"
@@ -115,9 +160,7 @@ func TestMain(t *testing.T) {
 			Url:     url,
 		}
 
-		b, err := json.Marshal(want)
-
-		require.NoError(t, err)
+		b := []byte(`{"Title": "title", "AltText": "alt_text", "Url": "url"}`)
 
 		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(b))
 		require.NoError(t, err)
@@ -133,6 +176,22 @@ func TestMain(t *testing.T) {
 		decoder.Decode(&got)
 
 		require.Equal(t, want, got)
+
+	})
+
+	t.Run("POST /images.json invalid format", func(t *testing.T) {
+
+		b := []byte(`{"Title": "title", "AltText": "alt_text", "Url": "url`)
+
+		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(b))
+		require.NoError(t, err)
+
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+
+		s.ImagesHandler(response, request)
+
+		require.Equal(t, response.Result().StatusCode, http.StatusBadRequest)
 
 	})
 
@@ -173,7 +232,8 @@ func TestFetchImages(t *testing.T) {
 	teardownSuite := setupSuite(t)
 	defer teardownSuite(t)
 
-	conn := ConnectToDB(TEST_DB_URL)
+	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
+	require.NoError(t, err)
 
 	images, err := FetchImages(conn)
 
