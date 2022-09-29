@@ -2,16 +2,49 @@ package static
 
 import (
 	"fmt"
-	"log"
 	"net/http"
+	"os"
 )
 
-func Run(path string, port int) {
+type Config struct {
+	Path string `json:"path"`
+	Port int    `json:"port"`
+}
 
-	http.Handle("/", http.FileServer(http.Dir(path)))
-	log.Printf("Listening on :%d...", port)
-	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+func Run(c Config) error {
+
+	path, err := validatePath(c.Path)
+
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	handler := http.FileServer(http.Dir(path))
+
+	http.Handle("/", handler)
+
+	err = http.ListenAndServe(fmt.Sprintf(":%d", c.Port), nil)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validatePath(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("Path cannot be empty")
+	}
+
+	file, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", "Invalid path provided", err)
+	}
+
+	if !file.IsDir() {
+		return path, fmt.Errorf("%s: %w", "Path is not a directory", err)
+	}
+
+	return path, nil
 }

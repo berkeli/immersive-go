@@ -2,7 +2,6 @@ package images
 
 import (
 	"context"
-	"log"
 	. "multiple-servers/api/types"
 
 	"github.com/jackc/pgx/v4"
@@ -11,7 +10,7 @@ import (
 func GetAll(conn *pgx.Conn) ([]Image, error) {
 	rows, err := conn.Query(context.Background(), "SELECT title, alt_text, url FROM images")
 	if err != nil {
-		log.Printf("Unable to fetch images: %s", err.Error())
+		return nil, err
 	}
 
 	var images []Image
@@ -20,18 +19,18 @@ func GetAll(conn *pgx.Conn) ([]Image, error) {
 		var image Image
 		err = rows.Scan(&image.Title, &image.AltText, &image.Url)
 		if err != nil {
-			log.Printf("Unable to scan row: %v", err)
+			return images, err
 		}
 		images = append(images, image)
 	}
 
-	return images, err
+	return images, nil
 }
 
-func Insert(conn *pgx.Conn, image Image) (Image, error) {
-	rows, err := conn.Query(context.Background(), "SELECT title, alt_text, url FROM images")
+func InsertOne(conn *pgx.Conn, newImage Image) (Image, error) {
+	rows, err := conn.Query(context.Background(), "INSERT INTO images (title, alt_text, url) VALUES ($1, $2, $3) RETURNING title, alt_text, url", newImage.Title, newImage.AltText, newImage.Url)
 	if err != nil {
-		log.Printf("Unable to fetch images: %s", err.Error())
+		return newImage, err
 	}
 
 	var images []Image
@@ -40,7 +39,7 @@ func Insert(conn *pgx.Conn, image Image) (Image, error) {
 		var image Image
 		err = rows.Scan(&image.Title, &image.AltText, &image.Url)
 		if err != nil {
-			log.Printf("Unable to scan row: %v", err)
+			return newImage, err
 		}
 		images = append(images, image)
 	}

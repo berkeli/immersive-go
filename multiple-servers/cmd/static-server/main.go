@@ -2,20 +2,20 @@ package main
 
 import (
 	"flag"
+	"log"
 	"multiple-servers/static"
 )
 
-var (
-	flagPath string
-	flagPort int
-)
-
-func init() {
-	defer flag.Parse()
-	flag.StringVar(&flagPath, "path", "assets", "Provide the path to the static files")
-	flag.IntVar(&flagPort, "port", 8080, "Provide the port where static server will listen")
-}
-
 func main() {
-	static.Run(flagPath, flagPort)
+	path := flag.String("path", "assets", "Provide path to the static files, default is assets")
+	port := flag.Int("port", 8081, "Provide port where static server will listen, default is 8081")
+	flag.Parse()
+
+	err := static.Run(static.Config{
+		Path: *path,
+		Port: *port,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 }

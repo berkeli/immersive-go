@@ -2,21 +2,26 @@ package main
 
 import (
 	"flag"
+	"log"
 	"multiple-servers/api"
 	"os"
 )
 
-var (
-	flagPort int
-	DB_URL   string
-)
-
-func init() {
-	defer flag.Parse()
-	flag.IntVar(&flagPort, "port", 8080, "Provide the port where static server will listen")
-	DB_URL = os.Getenv("DATABASE_URL")
-}
-
 func main() {
-	api.Run(DB_URL, flagPort)
+	DB_URL := os.Getenv("DATABASE_URL")
+
+	if DB_URL == "" {
+		log.Fatal("DATABASE_URL env variable must be set for the API to run")
+	}
+
+	port := flag.Int("port", 8080, "Provide the port where api server will listen, default is 8080")
+	flag.Parse()
+	err := api.Run(api.Config{
+		Port:   *port,
+		DB_URL: DB_URL,
+	})
+
+	if err != nil {
+		log.Fatalf("Could not start API: %s", err)
+	}
 }

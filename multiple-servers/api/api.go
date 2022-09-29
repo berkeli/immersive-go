@@ -8,98 +8,127 @@ import (
 	"multiple-servers/api/images"
 	. "multiple-servers/api/types"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v4"
 )
 
-func ConnectToDB(DB_URL string) *pgx.Conn {
-	conn, err := pgx.Connect(context.Background(), DB_URL)
+type Config struct {
+	Port   int    `json:"path"`
+	DB_URL string `json:"port"`
+}
 
+type Server struct {
+	db *pgx.Conn
+}
+
+func Run(c Config) error {
+	conn, err := pgx.Connect(context.Background(), c.DB_URL)
 	if err != nil {
-		log.Fatal("Unable to connect to database: " + err.Error())
+		return err
 	}
-
-	return conn
-}
-
-func enableCors(w *http.ResponseWriter) {
-	(*w).Header().Set("Access-Control-Allow-Origin", "*")
-}
-
-func Run(DB_URL string, port int) {
-	conn := ConnectToDB(DB_URL)
 	defer conn.Close(context.Background())
 
-	http.HandleFunc("/images.json", func(w http.ResponseWriter, r *http.Request) {
-		ImagesHandler(w, r, conn)
-	})
-	http.HandleFunc("/", IndexHandler)
+	s := Server{db: conn}
 
-	log.Printf("Listening on :%d...", port)
+	http.HandleFunc("/", s.IndexHandler)
+	http.HandleFunc("/images.json", s.ImagesHandler)
 
-	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	err = http.ListenAndServe(fmt.Sprintf(":%d", c.Port), nil)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	return nil
 }
 
-func IndexHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Welcome to image server API")
-}
-
-func ImagesHandler(w http.ResponseWriter, r *http.Request, conn *pgx.Conn) {
+func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println(r.Method, r.URL.EscapedPath())
 	enableCors(&w)
 
-	queryParams := r.URL.Query()
+	switch r.Method {
+	case "GET":
+		w.Write([]byte("Welcome to the API"))
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.Method, r.URL.EscapedPath())
+	enableCors(&w)
+
 	indent := 1
+	queryParams := r.URL.Query()
 	if queryParams.Get("indent") != "" {
-		indent, _ = strconv.Atoi(queryParams.Get("indent"))
+		i, err := ValidateIndent(queryParams.Get("indent"))
+		if err != nil {
+			log.Println(err)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+		indent = i
 	}
 
 	switch r.Method {
 	case "GET":
-		images, err := images.GetAll(conn)
+		images, err := images.GetAll(s.db)
 
 		if err != nil {
+			log.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Unable to fetch images"))
+			return
+		}
+
+		if len(images) == 0 {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("No images found"))
 			return
 		}
 
 		b, err := json.MarshalIndent(images, "", strings.Repeat(" ", indent))
 
 		if err != nil {
+			log.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Unable to serialize json"))
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(b)
 	case "POST":
+		fmt.Println(r.Body)
 		decoder := json.NewDecoder(r.Body)
 		var image Image
 		err := decoder.Decode(&image)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			log.Println(err)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Unable to parse json"))
 			return
 		}
 
-		res, err := images.Insert(conn, image)
+		res, err := images.InsertOne(s.db, image)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Unable to insert image"))
 			return
 		}
 		b, err := json.MarshalIndent(res, "", strings.Repeat(" ", indent))
+		if err != nil {
+			log.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Unable to serialize json"))
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		w.Write(b)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
-
 	}
 
 }
