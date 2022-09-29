@@ -58,6 +58,8 @@ Content-Length: 487
 [{"Title":"Sunset","AltText":"Clouds at sunset","URL":"https://images.unsplash.com/photo-1506815444479-bfdb1e96c566?ixlib=rb-1.2.1\u0026ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8\u0026auto=format\u0026fit=crop\u0026w=1000\u0026q=80"},{"Title":"Mountain","AltText":"A mountain at sunset","URL":"https://images.unsplash.com/photo-1540979388789-6cee28a1cdc9?ixlib=rb-1.2.1\u0026ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8\u0026auto=format\u0026fit=crop\u0026w=1000\u0026q=80"}]
 ```
 
+> 💡 See the [prep README.md](../prep/README.md#command-line-examples) for an explanation of this command line example.
+
 We're going to need to import `"encoding/json"` and `Marshal` to turn the data into JSON.
 
 ```go
@@ -140,7 +142,9 @@ CREATE DATABASE "go-server-database"
     IS_TEMPLATE = False;
 ```
 
-TODO: note here introducing SQL.
+> SQL is Structured Query Language: it's pronounced either "sequel" or Ess-Queue-Ell. Both work. It's used for interacting with various data storage systems. You can find out more about it and learn how to use it [on CodeAcademy](https://www.codecademy.com/learn/learn-sql).
+
+---
 
 Data in Postgres is arranged in tables with columns, like a spreadsheet.
 
@@ -187,7 +191,7 @@ INSERT INTO public.images(
 
 If we run this ("play" button at the top) we will get an error, because we haven't provided any data.
 
-Update the SQL to look like this. We don't need to specify an ID: Postgres will do this.
+Update the SQL to look like this. We don't need to specify an ID: Postgres will create this.
 
 ```sql
 INSERT INTO public.images(title, url, alt_text)
