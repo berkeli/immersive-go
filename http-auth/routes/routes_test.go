@@ -10,9 +10,9 @@ import (
 	"golang.org/x/time/rate"
 )
 
-type MockReader struct{}
+type FailingReader struct{}
 
-func (r MockReader) Read(p []byte) (int, error) {
+func (r FailingReader) Read(p []byte) (int, error) {
 	return 0, errors.New("some error")
 }
 
@@ -55,9 +55,9 @@ func TestMain(t *testing.T) {
 
 		t.Run("should return status 500", func(t *testing.T) {
 
-			m := MockReader{}
+			fr := FailingReader{}
 
-			request, _ := http.NewRequest(http.MethodPost, "/", m)
+			request, _ := http.NewRequest(http.MethodPost, "/", fr)
 			request.Header.Add("Content-Type", "text/html")
 
 			rr := httptest.NewRecorder()
@@ -94,7 +94,9 @@ func TestMain(t *testing.T) {
 			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
 			rr := httptest.NewRecorder()
 
-			c.HandleAuthenticated(rr, request)
+			handler := c.CheckAuth(http.HandlerFunc(c.GreetUser))
+
+			handler.ServeHTTP(rr, request)
 
 			AssertStatusUnauthorized(t, rr)
 		})
@@ -105,7 +107,9 @@ func TestMain(t *testing.T) {
 			request.SetBasicAuth("test", "invalid")
 			rr := httptest.NewRecorder()
 
-			c.HandleAuthenticated(rr, request)
+			handler := c.CheckAuth(http.HandlerFunc(c.GreetUser))
+
+			handler.ServeHTTP(rr, request)
 
 			AssertStatusUnauthorized(t, rr)
 		})
@@ -119,7 +123,20 @@ func TestMain(t *testing.T) {
 			request.SetBasicAuth(username, password)
 			rr := httptest.NewRecorder()
 
-			c.HandleAuthenticated(rr, request)
+			handler := c.CheckAuth(http.HandlerFunc(c.GreetUser))
+			handler.ServeHTTP(rr, request)
+
+			AssertStatusOK(t, rr)
+			AssertBodyEquals(t, rr, "Hello, testUN")
+		})
+	})
+
+	t.Run("GreetUser handler", func(t *testing.T) {
+		t.Run("should return status 200", func(t *testing.T) {
+			request, _ := http.NewRequest(http.MethodGet, "/authenticated", nil)
+			rr := httptest.NewRecorder()
+
+			c.GreetUser(rr, request)
 
 			AssertStatusOK(t, rr)
 			AssertBodyEquals(t, rr, "Hello, testUN")

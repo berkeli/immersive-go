@@ -74,19 +74,26 @@ func (c *Controllers) Handle500(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("500 - Internal Server Error"))
 }
 
-func (c *Controllers) HandleAuthenticated(w http.ResponseWriter, r *http.Request) {
+func (c *Controllers) CheckAuth(next http.Handler) http.Handler {
 
-	gotUsername, gotPassword, ok := r.BasicAuth()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUsername, gotPassword, ok := r.BasicAuth()
+		fmt.Println("gotUsername: ", gotUsername)
 
-	if !ok || gotUsername != c.Username || gotPassword != c.Password {
-		w.Header().Set("WWW-Authenticate", `Basic realm="protected", charset="UTF-8"`)
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("401 - Unauthorized"))
-		return
-	}
+		if !ok || gotUsername != c.Username || gotPassword != c.Password {
+			w.Header().Set("WWW-Authenticate", `Basic realm="protected", charset="UTF-8"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("401 - Unauthorized"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 
+}
+
+func (c *Controllers) GreetUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Hello, %s", gotUsername)))
+	w.Write([]byte(fmt.Sprintf("Hello, %s", c.Username)))
 }
 
 func (c *Controllers) HandleRateLimit(w http.ResponseWriter, r *http.Request) {

@@ -30,7 +30,7 @@ func main() {
 
 	http.HandleFunc("/500", c.Handle500)
 
-	http.HandleFunc("/authenticated", c.HandleAuthenticated)
+	http.Handle("/authenticated", c.CheckAuth(http.HandlerFunc(c.GreetUser)))
 
 	http.HandleFunc("/limited", c.HandleRateLimit)
 
