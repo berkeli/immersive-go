@@ -25,6 +25,16 @@ func TestRun(t *testing.T) {
 
 		require.Error(t, err)
 	})
+
+	t.Run("Return err with invalid port", func(t *testing.T) {
+
+		err := Run(Config{
+			Port: -1,
+			Path: "../assets",
+		})
+
+		require.Error(t, err)
+	})
 }
 
 func TestValidatePath(t *testing.T) {
