@@ -29,10 +29,9 @@ func SetupSuite(tb testing.TB) (*pgx.Conn, func(tb testing.TB)) {
 	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
 	require.NoError(tb, err)
 
-	_, err = conn.Exec(context.Background(), "CREATE TABLE IF NOT EXISTS images (id serial, title text, alt_text text, url text)")
-	require.NoError(tb, err)
+	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS images")
 
-	_, err = conn.Exec(context.Background(), "DELETE from images")
+	_, err = conn.Exec(context.Background(), "CREATE TABLE images (id serial, title text, alt_text text, url text)")
 	require.NoError(tb, err)
 
 	for _, image := range TestDbData {
@@ -44,7 +43,7 @@ func SetupSuite(tb testing.TB) (*pgx.Conn, func(tb testing.TB)) {
 
 	return conn, func(tb testing.TB) {
 		// teardown the database after testing
-		_, err := conn.Exec(context.Background(), "DELETE from images")
+		_, err := conn.Exec(context.Background(), "DROP TABLE IF EXISTS images")
 
 		require.NoError(tb, err)
 		conn.Close(context.Background())

@@ -177,12 +177,6 @@ func TestServer(t *testing.T) {
 
 			require.Equal(t, http.StatusCreated, rr.Code)
 
-			var actual Image
-			err = json.Unmarshal(rr.Body.Bytes(), &actual)
-			require.NoError(t, err)
-
-			require.Equal(t, newImage, actual)
-
 			newImages, err := images.GetAll(conn)
 			require.NoError(t, err)
 

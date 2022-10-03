@@ -27,22 +27,14 @@ func GetAll(conn *pgx.Conn) ([]Image, error) {
 	return images, nil
 }
 
-func InsertOne(conn *pgx.Conn, newImage Image) (Image, error) {
-	rows, err := conn.Query(context.Background(), "INSERT INTO images (title, alt_text, url) VALUES ($1, $2, $3) RETURNING title, alt_text, url", newImage.Title, newImage.AltText, newImage.Url)
+func InsertOne(conn *pgx.Conn, newImage Image) error {
+	row := conn.QueryRow(context.Background(), "INSERT INTO images (title, alt_text, url) VALUES ($1, $2, $3) RETURNING title, alt_text, url", newImage.Title, newImage.AltText, newImage.Url)
+
+	var image Image
+	err := row.Scan(&image.Title, &image.AltText, &image.Url)
 	if err != nil {
-		return newImage, err
+		return err
 	}
 
-	var images []Image
-
-	for rows.Next() {
-		var image Image
-		err = rows.Scan(&image.Title, &image.AltText, &image.Url)
-		if err != nil {
-			return newImage, err
-		}
-		images = append(images, image)
-	}
-
-	return images[0], err
+	return nil
 }

@@ -41,7 +41,7 @@ func TestInserOne(t *testing.T) {
 			AltText: "A kitten looking mischievous 2",
 			Url:     "https://placekitten.com/200/300",
 		}
-		_, err := InsertOne(conn, newImage)
+		err := InsertOne(conn, newImage)
 		require.NoError(t, err)
 
 		images, err := GetAll(conn)

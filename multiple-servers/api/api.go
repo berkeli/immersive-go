@@ -109,22 +109,15 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		res, err := images.InsertOne(s.db, image)
+		err = images.InsertOne(s.db, image)
 		if err != nil {
 			log.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Unable to insert image"))
 			return
 		}
-		b, err := json.MarshalIndent(res, "", strings.Repeat(" ", indent))
-		if err != nil {
-			log.Println(err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Unable to serialize json"))
-			return
-		}
+
 		w.WriteHeader(http.StatusCreated)
-		w.Write(b)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
