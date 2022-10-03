@@ -7,14 +7,16 @@ import (
 	"strconv"
 )
 
+const DefaultIndentMessage = "Please provide a positive number. Default is 1"
+
 func ValidateIndent(indent string) (int, error) {
 	i, err := strconv.Atoi(indent)
 	if err != nil {
 		log.Printf("Unable to parse indent: %s", err.Error())
-		return 0, fmt.Errorf("Unable to parse indent: %s", indent)
+		return 0, fmt.Errorf("Unable to parse indent: %s. %s", indent, DefaultIndentMessage)
 	}
 	if i < 0 {
-		return 0, fmt.Errorf("Indent cannot be negative: %s", indent)
+		return 0, fmt.Errorf("Indent cannot be negative: %s. %s", indent, DefaultIndentMessage)
 	}
 	return i, nil
 }

@@ -82,10 +82,8 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if len(images) == 0 {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("No images found"))
-			return
+		if images == nil {
+			images = []Image{}
 		}
 
 		b, err := json.MarshalIndent(images, "", strings.Repeat(" ", indent))

@@ -92,11 +92,18 @@ func TestServer(t *testing.T) {
 ]`,
 			expectedData: TestDbData,
 		},
-		"GET with invalid indent": {
+		"GET with negative indent": {
 			requestUrl:   "/images.json?indent=-1",
 			method:       http.MethodPost,
 			expectedCode: http.StatusBadRequest,
-			expectedBody: "Indent cannot be negative: -1",
+			expectedBody: "Indent cannot be negative: -1. Please provide a positive number. Default is 1",
+			expectedData: nil,
+		},
+		"GET with string for indent": {
+			requestUrl:   "/images.json?indent=a",
+			method:       http.MethodPost,
+			expectedCode: http.StatusBadRequest,
+			expectedBody: "Unable to parse indent: a. Please provide a positive number. Default is 1",
 			expectedData: nil,
 		},
 		"POST with invalid json": {
@@ -147,8 +154,8 @@ func TestServer(t *testing.T) {
 
 			s.ImagesHandler(rr, request)
 
-			require.Equal(t, http.StatusNotFound, rr.Code)
-			require.Equal(t, "No images found", rr.Body.String())
+			require.Equal(t, http.StatusOK, rr.Code)
+			require.Equal(t, "[]", rr.Body.String())
 		})
 
 		t.Run("POST with valid json", func(t *testing.T) {
