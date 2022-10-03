@@ -24,7 +24,7 @@ var TestDbData = []Image{
 	},
 }
 
-func SetupSuite(tb testing.TB) func(tb testing.TB) {
+func SetupSuite(tb testing.TB) (*pgx.Conn, func(tb testing.TB)) {
 
 	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
 	require.NoError(tb, err)
@@ -42,7 +42,7 @@ func SetupSuite(tb testing.TB) func(tb testing.TB) {
 
 	require.NoError(tb, err)
 
-	return func(tb testing.TB) {
+	return conn, func(tb testing.TB) {
 		// teardown the database after testing
 		_, err := conn.Exec(context.Background(), "DELETE from images")
 

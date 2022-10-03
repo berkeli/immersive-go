@@ -12,16 +12,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/jackc/pgx/v4"
 	"github.com/stretchr/testify/require"
 )
 
 func TestServer(t *testing.T) {
-	teardown := SetupSuite(t)
+	conn, teardown := SetupSuite(t)
 	defer teardown(t)
-
-	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
-	require.NoError(t, err)
 
 	s := Server{
 		db: conn,
@@ -138,8 +134,9 @@ func TestServer(t *testing.T) {
 		}
 
 		t.Run("return 404 when ther are no images", func(t *testing.T) {
-			teardown := SetupSuite(t)
+			conn, teardown := SetupSuite(t)
 			defer teardown(t)
+
 			_, err := conn.Exec(context.Background(), "DELETE FROM images")
 			require.NoError(t, err)
 
@@ -155,7 +152,7 @@ func TestServer(t *testing.T) {
 		})
 
 		t.Run("POST with valid json", func(t *testing.T) {
-			teardown := SetupSuite(t)
+			conn, teardown := SetupSuite(t)
 			defer teardown(t)
 
 			newImage := Image{
