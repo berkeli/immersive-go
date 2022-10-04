@@ -5,13 +5,13 @@ on: [push]
 defaults:
   run:
     working-directory: docker-cloud
-permissions:
-  id-token: write
 
 jobs:
   test_app:
     name: Build and test go app
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@v3
 
@@ -31,6 +31,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v1
         with:
           role-to-assume: arn:aws:iam::865256086922:role/GitHubActionECRPublicPushImage
+          aws-region: us-east-1
 
       - name: Build, tag, and push docker image to Amazon ECR
         env:
