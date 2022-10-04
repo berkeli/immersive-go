@@ -23,7 +23,7 @@ jobs:
         run: docker build -t docker-cloud:${{github.sha}} .
 
       - name: Test
-        run: go test -v ./...
+        run: DOCKER_TAG=${{github.sha}} go test -v ./...
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
