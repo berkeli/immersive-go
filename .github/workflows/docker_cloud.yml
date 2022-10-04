@@ -20,7 +20,7 @@ jobs:
           cache-dependency-path: "docker-cloud/go.sum"
           cache: true
       - name: Bild docker image
-        run: docker build -t docker-cloud:${{github.sha}}
+        run: docker build -t docker-cloud:${{github.sha}} .
 
       - name: Test
         run: go test -v ./...
