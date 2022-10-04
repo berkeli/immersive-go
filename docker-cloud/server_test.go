@@ -35,9 +35,9 @@ func TestServer(t *testing.T) {
 	resource, err := pool.Run("docker-cloud", tag, []string{})
 	require.NoError(t, err, "could not start container")
 
-	// t.Cleanup(func() {
-	// 	require.NoError(t, pool.Purge(resource), "failed to remove container")
-	// })
+	t.Cleanup(func() {
+		require.NoError(t, pool.Purge(resource), "failed to remove container")
+	})
 
 	for name, tt := range TestTable {
 		t.Run(name, func(t *testing.T) {
