@@ -10,8 +10,6 @@ jobs:
   test_app:
     name: Build and test go app
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     steps:
       - uses: actions/checkout@v3
 
@@ -22,13 +20,19 @@ jobs:
           cache-dependency-path: "docker-cloud/go.sum"
           cache: true
       - name: Bild docker image
-        run: docker build -t docker-cloud:${{github.sha}} .
+        run: docker build -t docker-cloud:latest .
 
 
       - name: Test
-        run: DOCKER_TAG=${{github.sha}} go test -v ./...
+        run: go test -v ./...
+  
+  push_to_aws:
+    name: Deploy to aws
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
 
-
+    steps:
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:

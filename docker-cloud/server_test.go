@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/ory/dockertest/v3"
@@ -27,12 +26,10 @@ var TestTable = map[string]struct {
 
 func TestServer(t *testing.T) {
 
-	tag := os.Getenv("DOCKER_TAG")
-
 	pool, err := dockertest.NewPool("")
 	require.NoError(t, err, "could not connect to Docker")
 
-	resource, err := pool.Run("docker-cloud", tag, []string{})
+	resource, err := pool.Run("docker-cloud", "latest", []string{})
 	require.NoError(t, err, "could not start container")
 
 	t.Cleanup(func() {
