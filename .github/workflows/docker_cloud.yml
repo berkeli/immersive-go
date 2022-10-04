@@ -28,6 +28,12 @@ jobs:
       - name: Test
         run: DOCKER_TAG=${{github.sha}} go test -v ./...
 
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          registry-type: public
+
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
