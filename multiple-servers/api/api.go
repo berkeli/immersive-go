@@ -8,7 +8,6 @@ import (
 	"multiple-servers/api/images"
 	. "multiple-servers/api/types"
 	"net/http"
-	"strings"
 
 	"github.com/jackc/pgx/v4"
 )
@@ -86,7 +85,7 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 			images = []Image{}
 		}
 
-		b, err := json.MarshalIndent(images, "", strings.Repeat(" ", indent))
+		serialized, err := serializeIndented(images, indent)
 
 		if err != nil {
 			log.Println(err)
@@ -96,7 +95,7 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(b)
+		w.Write(serialized)
 	case "POST":
 		fmt.Println(r.Body)
 		decoder := json.NewDecoder(r.Body)

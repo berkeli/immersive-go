@@ -1,10 +1,12 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 const DefaultIndentMessage = "Please provide a positive number. Default is 1"
@@ -23,4 +25,11 @@ func ValidateIndent(indent string) (int, error) {
 
 func enableCors(w *http.ResponseWriter) {
 	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+}
+
+func serializeIndented(v interface{}, indent int) ([]byte, error) {
+	if indent == 0 {
+		return json.Marshal(v)
+	}
+	return json.MarshalIndent(v, "", strings.Repeat(" ", indent))
 }

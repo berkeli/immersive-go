@@ -1,11 +1,13 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"multiple-servers/api/images"
 	. "multiple-servers/api/test_utils"
+	"strings"
 
 	. "multiple-servers/api/types"
 	"net/http"
@@ -60,36 +62,12 @@ func TestServer(t *testing.T) {
 			requestUrl:   "/images.json",
 			method:       http.MethodGet,
 			expectedCode: http.StatusOK,
-			expectedBody: `[
- {
-  "title": "A cute kitten",
-  "alt_text": "A kitten looking mischievous",
-  "URL": "https://placekitten.com/200/300"
- },
- {
-  "title": "A cute puppy",
-  "alt_text": "A puppy looking mischievous",
-  "URL": "https://placedog.net/200/300"
- }
-]`,
 			expectedData: TestDbData,
 		},
 		"GET with indent": {
 			requestUrl:   "/images.json?indent=4",
 			method:       http.MethodGet,
 			expectedCode: http.StatusOK,
-			expectedBody: `[
-    {
-        "title": "A cute kitten",
-        "alt_text": "A kitten looking mischievous",
-        "URL": "https://placekitten.com/200/300"
-    },
-    {
-        "title": "A cute puppy",
-        "alt_text": "A puppy looking mischievous",
-        "URL": "https://placedog.net/200/300"
-    }
-]`,
 			expectedData: TestDbData,
 		},
 		"GET with negative indent": {
@@ -135,12 +113,40 @@ func TestServer(t *testing.T) {
 
 					require.ElementsMatch(t, test.expectedData, actual)
 				}
-				require.Equal(t, test.expectedBody, rr.Body.String())
+
+				if test.expectedBody != "" {
+					require.Equal(t, test.expectedBody, rr.Body.String())
+				}
 
 			})
 		}
 
-		t.Run("return 404 when ther are no images", func(t *testing.T) {
+		t.Run("test indentation", func(t *testing.T) {
+			_, teardown := SetupSuite(t)
+			defer teardown(t)
+
+			request, err := http.NewRequest(http.MethodGet, "/images.json?indent=3", nil)
+			require.NoError(t, err)
+
+			rr := httptest.NewRecorder()
+
+			s.ImagesHandler(rr, request)
+
+			require.Equal(t, http.StatusOK, rr.Code)
+			scanner := bufio.NewScanner(rr.Body)
+
+			linesWith3Spaces := 0
+
+			for scanner.Scan() {
+				if strings.HasPrefix(scanner.Text(), "      \"") {
+					linesWith3Spaces++
+				}
+			}
+			// if indentation works correct for an array of images, there should be at least 1 key that starts with 6 spaces
+			require.Greaterf(t, linesWith3Spaces, 1, "Expected more than 1 line with 6 whitespaces")
+		})
+
+		t.Run("return empty array when ther are no images", func(t *testing.T) {
 			conn, teardown := SetupSuite(t)
 			defer teardown(t)
 

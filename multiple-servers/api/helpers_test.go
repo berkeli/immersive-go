@@ -26,3 +26,33 @@ func TestValidateIndent(t *testing.T) {
 		require.Equal(t, err, errors.New("Unable to parse indent: a. Please provide a positive number. Default is 1"))
 	})
 }
+
+func TestSerializeIndented(t *testing.T) {
+	t.Run("indent is 2", func(t *testing.T) {
+		data := struct {
+			Name string
+		}{
+			Name: "John",
+		}
+		s, err := serializeIndented(data, 2)
+		want := `{
+  "Name": "John"
+}`
+
+		require.NoError(t, err)
+		require.Equal(t, want, string(s))
+	})
+
+	t.Run("indent is 0", func(t *testing.T) {
+		data := struct {
+			Name string
+		}{
+			Name: "John",
+		}
+		s, err := serializeIndented(data, 0)
+		want := `{"Name":"John"}`
+
+		require.NoError(t, err)
+		require.Equal(t, want, string(s))
+	})
+}
