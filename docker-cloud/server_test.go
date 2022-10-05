@@ -20,7 +20,7 @@ var TestTable = map[string]struct {
 	},
 	"Ping should return pong": {
 		endpoint: "/ping",
-		expected: "Pong!",
+		expected: "Hello Pong!",
 	},
 }
 
