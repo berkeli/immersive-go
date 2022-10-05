@@ -9,5 +9,5 @@ func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) PingHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello Pong!"))
+	w.Write([]byte("Hello Pong!!"))
 }
