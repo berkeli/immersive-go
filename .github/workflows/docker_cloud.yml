@@ -135,4 +135,4 @@ jobs:
       
       - name: Terraform Apply
         working-directory: ${{env.wd}}
-        run: terraform apply -auto-approve -input=false -var="image_tag=${{ github.sha }}"
+        run: terraform apply -auto-approve -input=false -var="image_tag=${{ github.sha }}" -var="aws_profile=\"\""
