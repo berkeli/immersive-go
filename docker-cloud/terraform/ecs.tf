@@ -8,6 +8,7 @@ resource "aws_ecs_task_definition" "docker_cloud" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
   memory                   = "512"
+
   container_definitions = jsonencode(
     [{
       name : "docker-cloud",
@@ -31,7 +32,15 @@ resource "aws_ecs_service" "docker_cloud" {
   launch_type         = "FARGATE"
   desired_count       = 1
 
+  load_balancer {
+    target_group_arn = aws_lb_target_group.docker_cloud.arn
+    container_name   = "docker-cloud"
+    container_port   = 80
+  }
+
   network_configuration {
-    subnets = data.aws_subnets.public.ids
+    subnets          = data.aws_subnets.public.ids
+    security_groups  = [aws_security_group.lb.id]
+    assign_public_ip = true
   }
 }
