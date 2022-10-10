@@ -62,6 +62,7 @@ jobs:
     env:
       wd: docker-cloud/terraform
     steps:
+      - uses: actions/checkout@v3
       - name: Wait for tests to succeed
         uses: lewagon/wait-on-check-action@v1.0.0
         with:
