@@ -103,7 +103,7 @@ jobs:
         continue-on-error: true
       
       - name: Update Pull Request
-        working-directory: ${{env.wd}}
+        uses: actions/github-script@v6
         if: github.event_name == 'pull_request'
         env:
           PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
