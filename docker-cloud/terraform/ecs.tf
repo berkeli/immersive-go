@@ -32,6 +32,6 @@ resource "aws_ecs_service" "docker_cloud" {
   desired_count       = 1
 
   network_configuration {
-    subnets = data.aws_subnets.ids
+    subnets = data.aws_subnets.public.ids
   }
 }
