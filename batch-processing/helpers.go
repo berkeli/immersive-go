@@ -84,7 +84,10 @@ func extractFilename(url string) string {
 
 	fileName := strings.Split(urlArr[len(urlArr)-1], "?")[0]
 
-	fileName = strings.ReplaceAll(fileName, ".jpg", "")
+	i := strings.LastIndex(fileName, ".")
+	if i != -1 {
+		fileName = fileName[:i]
+	}
 
 	fileName = fmt.Sprintf("%s-%d", fileName, time.Now().Unix())
 
