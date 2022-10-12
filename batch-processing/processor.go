@@ -10,7 +10,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func ResultTOCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath string) {
+// This function consumes output from the channel for results
+// and writes them to a CSV file
+
+func ResultToCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath string) {
 
 	f, err := os.Create(outputFilepath)
 	if err != nil {
@@ -23,6 +26,7 @@ func ResultTOCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath strin
 	var failedW *csv.Writer
 	defer w.Flush()
 
+	// Create csv for failed output if param is set
 	if failedOutputFilepath != "" {
 		failedF, err := os.Create(failedOutputFilepath)
 		if err != nil {
@@ -44,6 +48,8 @@ func ResultTOCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath strin
 		w.Write([]string{row.url, row.input, row.output, row.s3url})
 	}
 }
+
+// Main function that processes each row in the csv
 
 func ProcessRow(url string, c Converter, r chan *Output, wg *sync.WaitGroup, s3Client *s3.S3, awsConfig *AWSConfig) {
 	defer wg.Done()

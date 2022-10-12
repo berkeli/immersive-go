@@ -79,7 +79,8 @@ func main() {
 
 	wg := &sync.WaitGroup{}
 
-	go ResultTOCSV(result, *outputFilepath, *failedOutputFilepath)
+	// Start a goroutine to write the results to a CSV file. Will be consuming output from the result channel in parallel
+	go ResultToCSV(result, *outputFilepath, *failedOutputFilepath)
 
 	for {
 		row, err := reader.Read()
@@ -92,7 +93,7 @@ func main() {
 		}
 		url := row[0]
 		wg.Add(1)
-
+		// each row is processed in a go routine
 		go ProcessRow(url, *c, result, wg, s3Client, awsConfig)
 	}
 	wg.Wait()
