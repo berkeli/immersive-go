@@ -54,7 +54,7 @@ func main() {
 		url := row[0]
 		wg.Add(1)
 
-		go ConvertFile(url, *c, result, wg)
+		go ProcessRow(url, *c, result, wg)
 	}
 	wg.Wait()
 	close(result)
