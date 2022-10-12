@@ -74,4 +74,4 @@ ENTRYPOINT [ "/bin/bash" ]
 FROM base as run
 
 WORKDIR /
-ENTRYPOINT /out --input /inputs/gradient.jpg --output /outputs/gradient_bw.jpg
+ENTRYPOINT /out --input /inputs/input.csv --output /outputs/output.csv

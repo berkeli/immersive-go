@@ -2,31 +2,19 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log"
 	"os"
+	"sync"
 
 	"gopkg.in/gographics/imagick.v2/imagick"
 )
 
-type ConvertImageCommand func(args []string) (*imagick.ImageCommandResult, error)
-
-type Converter struct {
-	cmd ConvertImageCommand
-}
-
-func (c *Converter) Grayscale(inputFilepath string, outputFilepath string) error {
-	// Convert the image to grayscale using imagemagick
-	// We are directly calling the convert command
-	_, err := c.cmd([]string{
-		"convert", inputFilepath, "-set", "colorspace", "Gray", outputFilepath,
-	})
-	return err
-}
-
 func main() {
 	// Accept --input and --output arguments for the images
-	inputFilepath := flag.String("input", "", "A path to an image to be processed")
-	outputFilepath := flag.String("output", "", "A path to where the processed image should be written")
+	inputFilepath := flag.String("input", "", "A path to a CSV file containing image URLs to be processed")
+	outputFilepath := flag.String("output", "", "A path to where the CSV file with processed image URLs should be written")
+	failedOutputFilepath := flag.String("output-failed", "", "A path to where the CSV file with failed image URLs should be written (optional)")
 	flag.Parse()
 
 	// Ensure that both flags were set
@@ -47,12 +35,33 @@ func main() {
 		cmd: imagick.ConvertImageCommand,
 	}
 
-	// Do the conversion!
-	err := c.Grayscale(*inputFilepath, *outputFilepath)
-	if err != nil {
-		log.Printf("error: %v\n", err)
-	}
+	reader := ReadCSV(inputFilepath)
+	result := make(chan *Output)
 
+	wg := &sync.WaitGroup{}
+
+	go ResultTOCSV(result, *outputFilepath, *failedOutputFilepath)
+
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			result <- &Output{url: row[0], err: err}
+			continue
+		}
+		url := row[0]
+		wg.Add(1)
+
+		go ConvertFile(url, *c, result, wg)
+	}
+	wg.Wait()
+	close(result)
 	// Log what we did
 	log.Printf("processed: %q to %q\n", *inputFilepath, *outputFilepath)
+
+	if *failedOutputFilepath != "" {
+		log.Printf("failed: %q\n", *failedOutputFilepath)
+	}
 }
