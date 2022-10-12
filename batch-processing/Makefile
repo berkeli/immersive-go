@@ -7,6 +7,8 @@ outputs:
 run: outputs
 	docker build --target run -t run .
 	docker run \
+		--mount type=bind,source="$$(echo $$HOME)/.aws",target=/root/.aws \
+		-e AWS_PROFILE=cyfplus \
 		--mount type=bind,source="$$(pwd)/outputs",target=/outputs \
 		--rm run
 
