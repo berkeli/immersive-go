@@ -15,6 +15,9 @@ import (
 
 func ResultToCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath string) {
 
+	outputHeader := []string{"url", "input", "output", "s3url"}
+	failedOutputHeader := []string{"url", "input", "output", "s3url", "error"}
+
 	f, err := os.Create(outputFilepath)
 	if err != nil {
 		log.Fatalf("error creating output file: %v", err)
@@ -22,7 +25,7 @@ func ResultToCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath strin
 	defer f.Close()
 
 	w := csv.NewWriter(f)
-	w.Write([]string{"url", "input", "output", "s3url"})
+	w.Write(outputHeader)
 	var failedW *csv.Writer
 	defer w.Flush()
 
@@ -35,7 +38,7 @@ func ResultToCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath strin
 		defer failedF.Close()
 
 		failedW = csv.NewWriter(failedF)
-		failedW.Write([]string{"url", "input", "output", "s3url", "error"})
+		failedW.Write(failedOutputHeader)
 		defer failedW.Flush()
 	}
 
