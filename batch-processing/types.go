@@ -26,3 +26,8 @@ type Output struct {
 	s3url  string
 	err    error
 }
+
+type AWSConfig struct {
+	region   string
+	s3bucket string
+}

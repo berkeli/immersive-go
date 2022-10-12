@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -20,7 +19,10 @@ const (
 )
 
 var (
-	SupportedImageTypes = []string{"imag1e/jpeg", "image/png"}
+	SupportedImageTypes = []string{
+		"image/jpeg",
+		"image/png",
+	}
 )
 
 func ReadCSV(inputFilepath *string) *csv.Reader {
@@ -55,11 +57,12 @@ func downloadFile(URL, filePath string) error {
 	if response.StatusCode != http.StatusOK {
 		return errors.New(fmt.Sprintf(CouldNotFetchImage, response.StatusCode))
 	}
+	mimeType := response.Header.Get("Content-Type")
 
-	err = verifyImageType(&response.Body)
-	if err != nil {
-		return err
+	if !isSupportedImageType(mimeType) {
+		return errors.New(fmt.Sprintf("Unsupported image type: %s, only the following are supported: %s", mimeType, SupportedImageTypes))
 	}
+
 	//Create a empty file
 	file, err := os.Create(filePath)
 	if err != nil {
@@ -88,27 +91,12 @@ func extractFilename(url string) string {
 	return fileName
 }
 
-func verifyImageType(reader *io.ReadCloser) error {
-	bytes, err := ioutil.ReadAll(*reader)
-
-	if err != nil {
-		return errors.New(fmt.Sprintf("Error reading downloaded image: %v", err))
-	}
-
-	mimeType := http.DetectContentType(bytes)
-
-	if !contains(SupportedImageTypes, mimeType) {
-		return errors.New(fmt.Sprintf("Unsupported image type: %s, only support: %s", mimeType, SupportedImageTypes))
-	}
-
-	return nil
-}
-
-func contains(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
+func isSupportedImageType(mimeType string) bool {
+	for _, t := range SupportedImageTypes {
+		if t == mimeType {
 			return true
 		}
 	}
+
 	return false
 }

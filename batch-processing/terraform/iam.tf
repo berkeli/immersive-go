@@ -49,3 +49,8 @@ resource "aws_iam_role" "GoCourseLambdaUserReadWriteS3" {
 }
 EOF
 }
+
+resource "aws_iam_role_policy_attachment" "GoCourseLambdaUserReadWriteS3" {
+  role       = aws_iam_role.GoCourseLambdaUserReadWriteS3.name
+  policy_arn = aws_iam_policy.S3ReadWriteGoCourse.arn
+}

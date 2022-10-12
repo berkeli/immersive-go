@@ -8,7 +8,8 @@ run: outputs
 	docker build --target run -t run .
 	docker run \
 		--mount type=bind,source="$$(echo $$HOME)/.aws",target=/root/.aws \
-		-e AWS_PROFILE=cyfplus \
+		-e AWS_ROLE_ARN="arn:aws:iam::297880250375:role/GoCourseLambdaUserReadWriteS3"\
+		-e AWS_REGION=eu-west-2 -e AWS_PROFILE=cyfplus -e S3_BUCKET="batch-processing-berkeli"\
 		--mount type=bind,source="$$(pwd)/outputs",target=/outputs \
 		--rm run
 

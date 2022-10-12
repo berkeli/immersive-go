@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"sync"
+
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 func ResultTOCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath string) {
@@ -43,7 +45,7 @@ func ResultTOCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath strin
 	}
 }
 
-func ProcessRow(url string, c Converter, r chan *Output, wg *sync.WaitGroup) {
+func ProcessRow(url string, c Converter, r chan *Output, wg *sync.WaitGroup, s3Client *s3.S3, awsConfig *AWSConfig) {
 	defer wg.Done()
 	fileExt := "jpg"
 	fileName := extractFilename(url)
@@ -66,5 +68,32 @@ func ProcessRow(url string, c Converter, r chan *Output, wg *sync.WaitGroup) {
 		return
 	}
 
-	r <- &Output{url: url, input: inputPath, output: outputPath}
+	file, err := os.Open(outputPath)
+
+	if err != nil {
+		r <- &Output{url: url, input: inputPath, output: outputPath, err: err}
+		return
+	}
+
+	// Upload to S3
+	key := fmt.Sprintf("%s.%s", fileName, fileExt)
+
+	_, err = s3Client.PutObject(&s3.PutObjectInput{
+		Bucket: &awsConfig.s3bucket,
+		Key:    &key,
+		Body:   file,
+	})
+
+	if err != nil {
+		r <- &Output{url: url, input: inputPath, output: outputPath, err: err}
+		return
+	}
+
+	r <- &Output{
+		url:    url,
+		input:  inputPath,
+		output: outputPath,
+		s3url:  fmt.Sprintf("https://%s.s3.amazonaws.com/%s", awsConfig.s3bucket, key),
+	}
+
 }
