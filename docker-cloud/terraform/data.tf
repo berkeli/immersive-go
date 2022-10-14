@@ -8,3 +8,7 @@ data "aws_subnets" "public" {
     values = [data.aws_vpc.default.id]
   }
 }
+
+data "aws_iam_openid_connect_provider" "default" {
+  url = "https://token.actions.githubusercontent.com"
+}

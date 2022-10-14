@@ -10,6 +10,7 @@ provider "aws" {
 }
 
 terraform {
+
   cloud {
     organization = "berkeli"
 

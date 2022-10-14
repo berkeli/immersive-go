@@ -1,5 +1,5 @@
 resource "aws_iam_policy" "GetAuthorizationToken" {
-  name        = "GetAuthorizationToken"
+  name        = "GetAuthorizationToken-${var.user}"
   path        = "/"
   description = "To get authorization token for github"
 
@@ -20,7 +20,7 @@ resource "aws_iam_policy" "GetAuthorizationToken" {
 
 
 resource "aws_iam_policy" "AllowPush" {
-  name        = "AllowPush"
+  name        = "AllowPush-${var.user}"
   path        = "/"
   description = "To push images to ecr public"
 

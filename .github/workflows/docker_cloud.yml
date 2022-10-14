@@ -37,7 +37,7 @@ jobs:
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
-          role-to-assume: arn:aws:iam::865256086922:role/GitHubActionECRPublicPushImage
+          role-to-assume: arn:aws:iam::865256086922:role/GitHubActionECRPublicPushImage-berkeli
           aws-region: us-east-1
 
       - name: Login to Amazon ECR
@@ -50,7 +50,7 @@ jobs:
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           REGISTRY_ALIAS: p6p1g0t9
-          REPOSITORY: immersive-go-course/docker-cloud
+          REPOSITORY: immersive-go-course/docker-cloud-berkeli
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t $REGISTRY/$REGISTRY_ALIAS/$REPOSITORY:$IMAGE_TAG .
@@ -59,26 +59,13 @@ jobs:
   terraform:
     name: Terraform apply changes
     runs-on: ubuntu-latest
+    needs:
+      - test_app
+      - push_to_aws
     env:
       wd: docker-cloud/terraform
     steps:
       - uses: actions/checkout@v3
-      - name: Wait for tests to succeed
-        uses: lewagon/wait-on-check-action@v1.0.0
-        with:
-          ref: ${{ github.ref }}
-          check-name: 'Build and test go app'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-      
-      - name: Wait for image to be pushed to ECR
-        uses: lewagon/wait-on-check-action@v1.0.0
-        with:
-          ref: ${{ github.ref }}
-          check-name: 'Push image to ECR'
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1

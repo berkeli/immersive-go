@@ -1,6 +1,6 @@
 resource "aws_iam_role" "GitHubActionECRPublicPushImage" {
 
-  name = "GitHubActionECRPublicPushImage"
+  name = "GitHubActionECRPublicPushImage-${var.user}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -11,15 +11,15 @@ resource "aws_iam_role" "GitHubActionECRPublicPushImage" {
         ],
         Effect = "Allow"
         Principal = {
-          Federated = aws_iam_openid_connect_provider.default.arn,
+          Federated = data.aws_iam_openid_connect_provider.default.arn,
 
         }
         Condition = {
           StringEquals = {
-            "${aws_iam_openid_connect_provider.default.url}:aud" = "sts.amazonaws.com"
+            "${data.aws_iam_openid_connect_provider.default.url}:aud" = "sts.amazonaws.com"
           },
           StringLike = {
-            "${aws_iam_openid_connect_provider.default.url}:sub" = "repo:berkeli/immersive-go:*"
+            "${data.aws_iam_openid_connect_provider.default.url}:sub" = "repo:berkeli/immersive-go:*"
           }
         }
       },
