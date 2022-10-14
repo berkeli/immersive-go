@@ -39,7 +39,7 @@ jobs:
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
-          role-to-assume: arn:aws:iam::865256086922:role/GitHubActionECRPublicPushImage-berkeli
+          role-to-assume: arn:aws:iam::297880250375:role/GitHubActionECRPublicPushImage-berkeli
           aws-region: us-east-1
 
       - name: Login to Amazon ECR
