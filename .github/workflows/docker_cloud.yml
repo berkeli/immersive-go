@@ -51,7 +51,7 @@ jobs:
       - name: Build, tag, and push docker image to Amazon ECR
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REGISTRY_ALIAS: p6p1g0t9
+          REGISTRY_ALIAS: b8c6e9l3
           REPOSITORY: immersive-go-course/docker-cloud-berkeli
           IMAGE_TAG: ${{ github.sha }}
         run: |
