@@ -18,13 +18,6 @@ const (
 	CouldNotFetchImage = "Received status %d when trying to download image"
 )
 
-var (
-	SupportedImageTypes = []string{
-		"image/jpeg",
-		"image/png",
-	}
-)
-
 func ReadCSV(inputFilepath *string) *csv.Reader {
 	f, err := os.Open(*inputFilepath)
 	if err != nil {
@@ -59,7 +52,12 @@ func downloadFile(URL, filePath string) error {
 	}
 	mimeType := response.Header.Get("Content-Type")
 
-	if !isSupportedImageType(mimeType) {
+	SupportedImageTypes := []string{
+		"image/jpeg",
+		"image/png",
+	}
+
+	if !isSupportedImageType(SupportedImageTypes, mimeType) {
 		return errors.New(fmt.Sprintf("Unsupported image type: %s, only the following are supported: %s", mimeType, SupportedImageTypes))
 	}
 
@@ -94,7 +92,7 @@ func extractFilename(url string) string {
 	return fileName
 }
 
-func isSupportedImageType(mimeType string) bool {
+func isSupportedImageType(SupportedImageTypes []string, mimeType string) bool {
 	for _, t := range SupportedImageTypes {
 		if t == mimeType {
 			return true
