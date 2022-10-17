@@ -28,7 +28,7 @@ func ResultToCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath strin
 	w.Write(outputHeader)
 	var failedW *csv.Writer
 	defer w.Flush()
-
+	defer failedW.Flush()
 	// Create csv for failed output if param is set
 	if failedOutputFilepath != "" {
 		failedF, err := os.Create(failedOutputFilepath)
@@ -39,7 +39,6 @@ func ResultToCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath strin
 
 		failedW = csv.NewWriter(failedF)
 		failedW.Write(failedOutputHeader)
-		defer failedW.Flush()
 	}
 
 	for row := range rows {
@@ -54,7 +53,7 @@ func ResultToCSV(rows <-chan *Output, outputFilepath, failedOutputFilepath strin
 
 // Main function that processes each row in the csv
 
-func ProcessRow(url string, c Converter, r chan *Output, wg *sync.WaitGroup, s3Client *s3.S3, awsConfig *AWSConfig) {
+func ProcessRow(url string, c Converter, r chan *Output, wg *sync.WaitGroup, a *AWSConfig) {
 	defer wg.Done()
 	fileExt := "jpg"
 	fileName := extractFilename(url)
@@ -87,8 +86,8 @@ func ProcessRow(url string, c Converter, r chan *Output, wg *sync.WaitGroup, s3C
 	// Upload to S3
 	key := fmt.Sprintf("%s.%s", fileName, fileExt)
 
-	_, err = s3Client.PutObject(&s3.PutObjectInput{
-		Bucket: &awsConfig.s3bucket,
+	_, err = a.s3.PutObject(&s3.PutObjectInput{
+		Bucket: &a.s3bucket,
 		Key:    &key,
 		Body:   file,
 	})
@@ -102,7 +101,7 @@ func ProcessRow(url string, c Converter, r chan *Output, wg *sync.WaitGroup, s3C
 		url:    url,
 		input:  inputPath,
 		output: outputPath,
-		s3url:  fmt.Sprintf("https://%s.s3.amazonaws.com/%s", awsConfig.s3bucket, key),
+		s3url:  fmt.Sprintf("https://%s.s3.amazonaws.com/%s", a.s3bucket, key),
 	}
 
 }

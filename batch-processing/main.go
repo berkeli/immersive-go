@@ -15,19 +15,19 @@ import (
 	"gopkg.in/gographics/imagick.v2/imagick"
 )
 
-func initAwsClient() (*s3.S3, error, *AWSConfig) {
+func initAwsClient() (*AWSConfig, error) {
 	awsRoleArn := os.Getenv("AWS_ROLE_ARN")
 	if awsRoleArn == "" {
-		return nil, fmt.Errorf("AWS_ROLE_ARN is not set"), nil
+		return nil, fmt.Errorf("AWS_ROLE_ARN is not set")
 	}
 	awsRegion := os.Getenv("AWS_REGION")
 	if awsRegion == "" {
-		return nil, fmt.Errorf("AWS_REGION is not set"), nil
+		return nil, fmt.Errorf("AWS_REGION is not set")
 	}
 
 	s3Bucket := os.Getenv("S3_BUCKET")
 	if s3Bucket == "" {
-		return nil, fmt.Errorf("S3_BUCKET is not set"), nil
+		return nil, fmt.Errorf("S3_BUCKET is not set")
 	}
 
 	sess := session.Must(session.NewSession())
@@ -37,10 +37,11 @@ func initAwsClient() (*s3.S3, error, *AWSConfig) {
 	// Create a new S3 client
 	S3Client := s3.New(sess, &aws.Config{Credentials: creds})
 
-	return S3Client, nil, &AWSConfig{
+	return &AWSConfig{
+		s3:       S3Client,
 		region:   awsRegion,
 		s3bucket: s3Bucket,
-	}
+	}, nil
 }
 
 func main() {
@@ -57,7 +58,7 @@ func main() {
 	}
 
 	// Create a new session
-	s3Client, err, awsConfig := initAwsClient()
+	a, err := initAwsClient()
 
 	if err != nil {
 		log.Fatal(err)
@@ -94,7 +95,7 @@ func main() {
 		url := row[0]
 		wg.Add(1)
 		// each row is processed in a go routine
-		go ProcessRow(url, *c, result, wg, s3Client, awsConfig)
+		go ProcessRow(url, *c, result, wg, a)
 	}
 	wg.Wait()
 	close(result)

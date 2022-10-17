@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/aws/aws-sdk-go/service/s3"
 	"gopkg.in/gographics/imagick.v2/imagick"
 )
 
@@ -19,15 +20,16 @@ func (c *Converter) Grayscale(inputFilepath string, outputFilepath string) error
 	return err
 }
 
-type Output struct {
-	url    string
-	input  string
-	output string
-	s3url  string
-	err    error
+type Out struct {
+	Url    string
+	Input  string
+	Output string
+	S3url  string
+	Err    error
 }
 
 type AWSConfig struct {
+	s3       *s3.S3
 	region   string
 	s3bucket string
 }

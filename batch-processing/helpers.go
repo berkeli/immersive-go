@@ -1,12 +1,9 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -18,37 +15,15 @@ const (
 	CouldNotFetchImage = "Received status %d when trying to download image"
 )
 
-func ReadCSV(inputFilepath *string) *csv.Reader {
-	f, err := os.Open(*inputFilepath)
-	if err != nil {
-		log.Fatalf("error reading input file: %v", err)
-	}
-
-	csvReader := csv.NewReader(f)
-	csvReader.FieldsPerRecord = 1
-
-	header, err := csvReader.Read()
-
-	if err != nil {
-		log.Fatalf("Error reading CSV: %v", err)
-	}
-
-	if strings.ToLower(header[0]) != "url" {
-		log.Fatalf(InvalidCSVFormat)
-	}
-
-	return csvReader
-}
-
-func downloadFile(URL, filePath string) error {
+func DownloadFileFromUrl(URL string) (io.Reader, error) {
 	response, err := http.Get(URL)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return errors.New(fmt.Sprintf(CouldNotFetchImage, response.StatusCode))
+		return nil, errors.New(fmt.Sprintf(CouldNotFetchImage, response.StatusCode))
 	}
 	mimeType := response.Header.Get("Content-Type")
 
@@ -57,24 +32,11 @@ func downloadFile(URL, filePath string) error {
 		"image/png",
 	}
 
-	if !isSupportedImageType(SupportedImageTypes, mimeType) {
-		return errors.New(fmt.Sprintf("Unsupported image type: %s, only the following are supported: %s", mimeType, SupportedImageTypes))
+	if !contains(SupportedImageTypes, mimeType) {
+		return nil, errors.New(fmt.Sprintf("Unsupported image type: %s, only the following are supported: %s", mimeType, SupportedImageTypes))
 	}
 
-	//Create a empty file
-	file, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	//Write the bytes to the file
-	_, err = io.Copy(file, response.Body)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return response.Body, nil
 }
 
 func extractFilename(url string) string {
@@ -92,7 +54,7 @@ func extractFilename(url string) string {
 	return fileName
 }
 
-func isSupportedImageType(SupportedImageTypes []string, mimeType string) bool {
+func contains(SupportedImageTypes []string, mimeType string) bool {
 	for _, t := range SupportedImageTypes {
 		if t == mimeType {
 			return true
