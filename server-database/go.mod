@@ -3,6 +3,7 @@ module server-database
 go 1.19
 
 require (
+	github.com/adrg/strutil v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.13.0 // indirect

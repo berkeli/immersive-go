@@ -16,22 +16,19 @@ type Image struct {
 	Title   string
 	AltText string
 	Url     string
+	Width   int
+	Height  int
 }
 
 type Server struct {
-	conn *pgx.Conn
-}
-
-func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello World"))
+	images *Images
 }
 
 func main() {
 	err := godotenv.Load()
 	DB_URL := os.Getenv("DB_URL")
 	if err != nil || DB_URL == "" {
-		os.Stderr.WriteString("Error loading .env file, please create one with 'DB_URL' set to your database connection string")
-		os.Exit(1)
+		log.Fatal("Error loading .env file, please create one with 'DB_URL' set to your database connection string")
 	}
 
 	conn, err := pgx.Connect(context.Background(), DB_URL)
@@ -41,13 +38,25 @@ func main() {
 	}
 	defer conn.Close(context.Background())
 
-	s := &Server{conn: conn}
+	s := &Server{
+		images: &Images{
+			conn: conn,
+		},
+	}
 
 	http.HandleFunc("/", s.IndexHandler)
 
 	http.HandleFunc("/images.json", s.ImagesHandler)
 
-	http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(":8080", nil)
+
+	if err != nil {
+		log.Fatalf("Unable to start server: %s", err.Error())
+	}
+}
+
+func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Hello World"))
 }
 
 func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,9 +73,9 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 		indent = i
 	}
 
-	if r.Method == "GET" {
-
-		images, err := FetchImages(s.conn)
+	switch r.Method {
+	case "GET":
+		images, err := s.images.GetAll()
 
 		if err != nil {
 			log.Print("Error fetching images: ", err)
@@ -85,7 +94,7 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(b)
-	} else if r.Method == "POST" {
+	case "POST":
 		decoder := json.NewDecoder(r.Body)
 		var image Image
 		err := decoder.Decode(&image)
@@ -95,9 +104,28 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_, err = s.conn.Exec(context.Background(), "INSERT INTO images (title, alt_text, url) VALUES ($1, $2, $3)", image.Title, image.AltText, image.Url)
+		err = ValidateAltText(image.Title, image.AltText)
+
 		if err != nil {
-			log.Print("Error inserting image", err)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		width, height, err := ValidateImage(image.Url)
+
+		if err != nil {
+			log.Print("Error validating image: ", err)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		image.Width = width
+		image.Height = height
+
+		err = s.images.InsertOne(image)
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Unable to insert image: " + err.Error()))
 			return
@@ -110,28 +138,7 @@ func (s *Server) ImagesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusCreated)
 		w.Write(b)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-
-}
-
-func FetchImages(conn *pgx.Conn) ([]Image, error) {
-	rows, err := conn.Query(context.Background(), "SELECT title, alt_text, url FROM images")
-	if err != nil {
-		log.Printf("Unable to fetch images: %s", err.Error())
-		return nil, err
-	}
-
-	var images []Image
-
-	for rows.Next() {
-		var image Image
-		err = rows.Scan(&image.Title, &image.AltText, &image.Url)
-		if err != nil {
-			log.Printf("Unable to scan row: %v", err)
-			return nil, err
-		}
-		images = append(images, image)
-	}
-
-	return images, nil
 }

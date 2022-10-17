@@ -2,67 +2,19 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v4"
 	"github.com/stretchr/testify/require"
 )
 
-const TEST_DB_URL = "postgresql://postgres:postgres@localhost:5432/go_server_test_db"
-
-var TestDbData = []Image{
-	{
-		Title:   "A cute kitten",
-		AltText: "A kitten looking mischievous",
-		Url:     "https://placekitten.com/200/300",
-	},
-	{
-		Title:   "A cute puppy",
-		AltText: "A puppy looking mischievous",
-		Url:     "https://placedog.net/200/300",
-	},
-}
-
-func setupSuite(tb testing.TB) func(tb testing.TB) {
-
-	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
-
-	if err != nil {
-		tb.Fatalf("Unable to connect to database: %s", err.Error())
-	}
-
-	_, err = conn.Exec(context.Background(), "DELETE from images")
-
-	if err != nil {
-		tb.Fatalf("Setup Error: Unable to delete from images: %s", err.Error())
-	}
-
-	_, err = conn.Exec(context.Background(), `INSERT INTO images (title, url, alt_text) 
-		VALUES ('A cute kitten', 'https://placekitten.com/200/300', 'A kitten looking mischievous'), 
-		('A cute puppy', 'https://placedog.net/200/300', 'A puppy looking mischievous')`,
-	)
-
-	if err != nil {
-		tb.Fatalf("Setup Error: Unable to insert into images: %s", err.Error())
-	}
-
-	return func(tb testing.TB) {
-		// teardown the database after testing
-		_, err := conn.Exec(context.Background(), "DELETE from images")
-
-		if err != nil {
-			tb.Fatalf("Teardown Error: Unable to delete from images: %s", err.Error())
-		}
-	}
-}
-
 func TestImage(t *testing.T) {
 
-	title, altText, url := "title", "alt_text", "url"
+	title, altText, url := "title", "title alt_text", "url"
 
 	image := Image{
 		Title:   title,
@@ -77,13 +29,14 @@ func TestImage(t *testing.T) {
 
 func TestMain(t *testing.T) {
 
-	teardownSuite := setupSuite(t)
+	conn, teardownSuite := setupSuite(t)
 	defer teardownSuite(t)
 
-	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
-	require.NoError(t, err)
-
-	s := &Server{conn: conn}
+	s := &Server{
+		images: &Images{
+			conn: conn,
+		},
+	}
 
 	t.Run("Get /", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/", nil)
@@ -114,27 +67,27 @@ func TestMain(t *testing.T) {
 	})
 
 	t.Run("Get /images.json with indent", func(t *testing.T) {
-		request, _ := http.NewRequest(http.MethodGet, "/images.json?indent=2", nil)
+
+		i := 2
+
+		request, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/images.json?indent=%d", i), nil)
 		response := httptest.NewRecorder()
 
 		s.ImagesHandler(response, request)
 
-		want := `[
-  {
-    "Title": "A cute kitten",
-    "AltText": "A kitten looking mischievous",
-    "Url": "https://placekitten.com/200/300"
-  },
-  {
-    "Title": "A cute puppy",
-    "AltText": "A puppy looking mischievous",
-    "Url": "https://placedog.net/200/300"
-  }
-]`
+		require.Equal(t, http.StatusOK, response.Code)
 
-		require.NoError(t, err)
+		got := response.Body.String()
 
-		require.Equal(t, want, response.Body.String())
+		prefixCurly := fmt.Sprintf("%s%s", strings.Repeat(" ", i), "{")
+		prefixString := fmt.Sprintf("%s%s", strings.Repeat(" ", i*2), "\"")
+
+		prefixCurlyCount := strings.Count(got, prefixCurly)
+		prefixStringCount := strings.Count(got, prefixString)
+
+		//when there are 2 items in the databse, there should be 2 curly brace matches and 6 string matches (3 per item)
+		require.GreaterOrEqual(t, prefixCurlyCount, 2)
+		require.GreaterOrEqual(t, prefixStringCount, 6)
 	})
 
 	t.Run("Get /images.json with invalid indent", func(t *testing.T) {
@@ -152,15 +105,17 @@ func TestMain(t *testing.T) {
 
 	t.Run("POST /images.json", func(t *testing.T) {
 
-		title, altText, url := "title", "alt_text", "url"
+		title, altText, url := "title", "title alt_text", "https://placedog.net/200/400"
 
 		want := Image{
 			Title:   title,
 			AltText: altText,
 			Url:     url,
+			Width:   200,
+			Height:  400,
 		}
 
-		b := []byte(`{"Title": "title", "AltText": "alt_text", "Url": "url"}`)
+		b := []byte(`{"Title": "title", "AltText": "title alt_text", "Url": "https://placedog.net/200/400"}`)
 
 		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(b))
 		require.NoError(t, err)
@@ -169,6 +124,8 @@ func TestMain(t *testing.T) {
 		response := httptest.NewRecorder()
 
 		s.ImagesHandler(response, request)
+
+		require.Equal(t, response.Result().StatusCode, http.StatusCreated)
 
 		var got Image
 
@@ -181,7 +138,7 @@ func TestMain(t *testing.T) {
 
 	t.Run("POST /images.json invalid format", func(t *testing.T) {
 
-		b := []byte(`{"Title": "title", "AltText": "alt_text", "Url": "url`)
+		b := []byte(`{"Title": "title", "AltText": "title alt_text", "Url": "url`)
 
 		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(b))
 		require.NoError(t, err)
@@ -197,11 +154,11 @@ func TestMain(t *testing.T) {
 
 	t.Run("POST /images.json and fetch from DB", func(t *testing.T) {
 
-		imagesBefore, err := FetchImages(s.conn)
+		imagesBefore, err := s.images.GetAll()
 
 		require.NoError(t, err)
 
-		newImage := []byte(`{"Title":"New test image","AltText":"alt_text","Url":"test"}`)
+		newImage := []byte(`{"Title":"Test","AltText":"test alt_text","Url":"https://placedog.net/200/500"}`)
 
 		request, err := http.NewRequest(http.MethodPost, "/images.json", bytes.NewBuffer(newImage))
 		require.NoError(t, err)
@@ -210,34 +167,22 @@ func TestMain(t *testing.T) {
 
 		s.ImagesHandler(response, request)
 
-		imagesAfter, err := FetchImages(s.conn)
+		imagesAfter, err := s.images.GetAll()
 
 		require.NoError(t, err)
 
 		require.Equal(t, len(imagesBefore)+1, len(imagesAfter))
 
 		img := Image{
-			Title:   "New test image",
-			AltText: "alt_text",
-			Url:     "test",
+			Title:   "Test",
+			AltText: "test alt_text",
+			Url:     "https://placedog.net/200/500",
+			Width:   200,
+			Height:  500,
 		}
 
 		require.Contains(t, imagesAfter, img)
 
 	})
 
-}
-
-func TestFetchImages(t *testing.T) {
-	teardownSuite := setupSuite(t)
-	defer teardownSuite(t)
-
-	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
-	require.NoError(t, err)
-
-	images, err := FetchImages(conn)
-
-	require.NoError(t, err)
-
-	require.ElementsMatch(t, images, TestDbData)
 }
