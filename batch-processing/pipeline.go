@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3"
 )
@@ -226,6 +227,7 @@ func ResultToCSV(rows <-chan *Out, c *Config, done chan bool) {
 }
 
 func Do(config *Config) {
+	start := time.Now()
 	// Create the channels
 	done := make(chan bool)
 	readOut := make(chan *Out)
@@ -239,7 +241,7 @@ func Do(config *Config) {
 	// Start the uploaders
 	uploadWg := &sync.WaitGroup{}
 
-	for i := 0; i < 99; i++ {
+	for i := 0; i < 10; i++ {
 		uploadWg.Add(1)
 		go Upload(convertOut, uploadOut, uploadWg, config.Aws)
 	}
@@ -247,7 +249,7 @@ func Do(config *Config) {
 	//start converter workers
 	convertWg := &sync.WaitGroup{}
 
-	for i := 0; i < 99; i++ {
+	for i := 0; i < 10; i++ {
 		convertWg.Add(1)
 		go Convert(downloadOut, convertOut, convertWg, config.Converter)
 	}
@@ -255,7 +257,7 @@ func Do(config *Config) {
 	//start download workers
 	downWg := &sync.WaitGroup{}
 
-	for i := 0; i < 99; i++ {
+	for i := 0; i < 10; i++ {
 		downWg.Add(1)
 		go Download(readOut, downloadOut, downWg)
 	}
@@ -274,6 +276,10 @@ func Do(config *Config) {
 	uploadWg.Wait()
 	log.Println("Finished uploading files")
 	close(uploadOut)
+
+	elapsed := time.Since(start)
+
+	log.Printf("Finished in %s", elapsed)
 
 	<-done
 }
