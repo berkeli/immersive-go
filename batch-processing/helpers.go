@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -15,28 +20,34 @@ const (
 	CouldNotFetchImage = "Received status %d when trying to download image"
 )
 
-func DownloadFileFromUrl(URL string) (io.Reader, error) {
+func DownloadFileFromUrl(URL string) (io.Reader, string, error) {
 	response, err := http.Get(URL)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode != http.StatusOK {
-		return nil, errors.New(fmt.Sprintf(CouldNotFetchImage, response.StatusCode))
-	}
-	mimeType := response.Header.Get("Content-Type")
-
-	SupportedImageTypes := []string{
-		"image/jpeg",
-		"image/png",
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, "", errors.New(fmt.Sprintf(CouldNotFetchImage, response.StatusCode))
 	}
 
-	if !contains(SupportedImageTypes, mimeType) {
-		return nil, errors.New(fmt.Sprintf("Unsupported image type: %s, only the following are supported: %s", mimeType, SupportedImageTypes))
+	var buf bytes.Buffer
+
+	tee := io.TeeReader(response.Body, &buf)
+
+	_, format, err := image.Decode(tee)
+
+	if err != nil {
+		return nil, "", err
 	}
 
-	return response.Body, nil
+	SupportedImageTypes := []string{"jpeg", "png", "gif"}
+
+	if !contains(SupportedImageTypes, format) {
+		return nil, "", errors.New(fmt.Sprintf("Unsupported image type: %s, only the following are supported: %s", format, SupportedImageTypes))
+	}
+
+	return &buf, format, nil
 }
 
 func extractFilename(url string) string {

@@ -3,10 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
@@ -44,6 +42,14 @@ func initAwsClient() (*AWSConfig, error) {
 	}, nil
 }
 
+type Config struct {
+	InputFilepath        string
+	OutputFilepath       string
+	FailedOutputFilepath string
+	Converter            *Converter
+	Aws                  *AWSConfig
+}
+
 func main() {
 	// Accept --input and --output arguments for the images
 	inputFilepath := flag.String("input", "", "A path to a CSV file containing image URLs to be processed")
@@ -75,30 +81,16 @@ func main() {
 		cmd: imagick.ConvertImageCommand,
 	}
 
-	reader := ReadCSV(inputFilepath)
-	result := make(chan *Output)
-
-	wg := &sync.WaitGroup{}
-
-	// Start a goroutine to write the results to a CSV file. Will be consuming output from the result channel in parallel
-	go ResultToCSV(result, *outputFilepath, *failedOutputFilepath)
-
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			result <- &Output{url: row[0], err: err}
-			continue
-		}
-		url := row[0]
-		wg.Add(1)
-		// each row is processed in a go routine
-		go ProcessRow(url, *c, result, wg, a)
+	config := &Config{
+		InputFilepath:        *inputFilepath,
+		OutputFilepath:       *outputFilepath,
+		FailedOutputFilepath: *failedOutputFilepath,
+		Converter:            c,
+		Aws:                  a,
 	}
-	wg.Wait()
-	close(result)
+
+	Do(config)
+
 	// Log what we did
 	log.Printf("processed: %q to %q\n", *inputFilepath, *outputFilepath)
 
