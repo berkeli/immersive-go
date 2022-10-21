@@ -14,7 +14,7 @@ func main() {
 		log.Fatal("DATABASE_URL env variable must be set for the API to run")
 	}
 
-	port := flag.Int("port", 8080, "Provide the port where api server will listen, default is 8080")
+	port := flag.Int("port", 8081, "Provide the port where api server will listen, default is 8081")
 	flag.Parse()
 	err := api.Run(api.Config{
 		Port:   *port,

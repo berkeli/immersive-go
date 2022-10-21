@@ -13,7 +13,7 @@ function fetchImages(development) {
       },
     ]);
   }
-  return fetch("http://localhost:8081/images.json").then((_) => _.json());
+  return fetch(`${API_URL}/images.json`).then((_) => _.json());
 }
 
 function timeout(t, v) {
