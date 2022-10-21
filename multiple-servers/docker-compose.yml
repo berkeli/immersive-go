@@ -1,0 +1,39 @@
+services: 
+  gomulti-postgres:
+    image: postgres:13.0-alpine
+    container_name: gomulti-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=go_server_db
+    volumes:
+      - ./migrations.sql:/docker-entrypoint-initdb.d/migrations.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  gomulti-api:
+    depends_on:
+      gomulti-postgres:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: api.Dockerfile
+    container_name: gomulti-api
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@gomulti-postgres:5432/go_server_db
+    ports:
+      - 8081:8081
+  
+  gomulti-static:
+    container_name: gomulti-static
+    depends_on:
+      gomulti-api:
+        condition: service_started
+    build:
+      context: .
+      dockerfile: static.Dockerfile
+    ports:
+      - 8082:8082
