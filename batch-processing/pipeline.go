@@ -13,27 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func Read(inputFilepath *string, out chan *Out) {
+func Read(csvReader *csv.Reader, out chan *Out) {
 	// Read the input CSV file
 	// For each line, send the URL to the download channel
 	defer close(out)
-	f, err := os.Open(*inputFilepath)
-	if err != nil {
-		log.Fatalf("error reading input file: %v", err)
-	}
 
-	csvReader := csv.NewReader(f)
 	csvReader.FieldsPerRecord = 1
-
-	header, err := csvReader.Read()
-
-	if err != nil {
-		log.Fatalf("Error reading CSV: %v", err)
-	}
-
-	if strings.ToLower(header[0]) != "url" {
-		log.Fatalf(InvalidCSVFormat)
-	}
 
 	for {
 		row, err := csvReader.Read()
@@ -64,14 +49,13 @@ func Download(in <-chan *Out, out chan *Out, wg *sync.WaitGroup) {
 			continue
 		}
 		body, ext, err := DownloadFileFromUrl(row.Url)
-
 		if err != nil {
 			row.Err = err
 			out <- row
 			continue
 		}
 
-		//Create a empty file
+		//Create an empty file
 		fileName := extractFilename(row.Url)
 		inputPath := fmt.Sprintf("/outputs/%s.%s", fileName, ext)
 		outputPath := fmt.Sprintf("/outputs/%s-converted.%s", fileName, ext)
@@ -86,7 +70,7 @@ func Download(in <-chan *Out, out chan *Out, wg *sync.WaitGroup) {
 		}
 		defer file.Close()
 
-		//Write the bytes to the file
+		//Write bytes to the file
 		_, err = io.Copy(file, body)
 		if err != nil {
 			out <- &Out{
@@ -226,7 +210,8 @@ func ResultToCSV(rows <-chan *Out, c *Config, done chan bool) {
 	done <- true
 }
 
-func Do(config *Config) {
+func Do(config *Config) error {
+
 	start := time.Now()
 	// Create the channels
 	done := make(chan bool)
@@ -263,7 +248,12 @@ func Do(config *Config) {
 	}
 
 	// Start the reader
-	go Read(&config.InputFilepath, readOut)
+	csvReader, err := OpenCSVFile(config.InputFilepath)
+
+	if err != nil {
+		return err
+	}
+	go Read(csvReader, readOut)
 
 	downWg.Wait()
 	log.Println("Finished downloading images")
@@ -282,4 +272,6 @@ func Do(config *Config) {
 	log.Printf("Finished in %s", elapsed)
 
 	<-done
+
+	return nil
 }

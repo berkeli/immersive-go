@@ -58,7 +58,7 @@ RUN go build -o /out
 ##
 FROM base as test
 
-ENTRYPOINT [ "go", "test", "-v" ]
+ENTRYPOINT [ "go", "test", "-cover", "-v" ]
 
 ##
 ## DEVELOP

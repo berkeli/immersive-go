@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -9,6 +10,7 @@ import (
 	_ "image/png"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 const (
 	InvalidCSVFormat   = "CSV file must have a header row with 'url' as the first column"
 	CouldNotFetchImage = "Received status %d when trying to download image"
+	EmptyCSV           = "Provided CSV file appears to be empty"
 )
 
 func DownloadFileFromUrl(URL string) (io.Reader, string, error) {
@@ -44,7 +47,7 @@ func DownloadFileFromUrl(URL string) (io.Reader, string, error) {
 	SupportedImageTypes := []string{"jpeg", "png", "gif"}
 
 	if !contains(SupportedImageTypes, format) {
-		return nil, "", errors.New(fmt.Sprintf("Unsupported image type: %s, only the following are supported: %s", format, SupportedImageTypes))
+		return nil, "", errors.New(fmt.Sprintf("Unsupported image type, only the following are supported: %s", SupportedImageTypes))
 	}
 
 	return &buf, format, nil
@@ -73,4 +76,31 @@ func contains(SupportedImageTypes []string, mimeType string) bool {
 	}
 
 	return false
+}
+
+func OpenCSVFile(filename string) (*csv.Reader, error) {
+
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	csvReader := csv.NewReader(file)
+	csvReader.FieldsPerRecord = 1
+
+	header, err := csvReader.Read()
+
+	if err == io.EOF {
+		return nil, errors.New(EmptyCSV)
+	}
+
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Error reading CSV: %v", err))
+	}
+
+	if strings.ToLower(header[0]) != "url" {
+		return nil, errors.New(InvalidCSVFormat)
+	}
+
+	return csvReader, nil
 }
