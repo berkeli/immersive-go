@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"time"
 
 	pb "github.com/CodeYourFuture/immersive-go-course/grpc-client-server/prober"
 	"google.golang.org/grpc"
@@ -12,7 +13,9 @@ import (
 )
 
 var (
-	addr = flag.String("addr", "localhost:50051", "the address to connect to")
+	addr        = flag.String("addr", "localhost:50051", "the address to connect to")
+	endpoint    = flag.String("endpoint", "https://www.google.com", "the endpoint to probe")
+	nOfRequests = flag.Int("tries", 1, "number of requests to make")
 )
 
 func main() {
@@ -26,13 +29,20 @@ func main() {
 	c := pb.NewProberClient(conn)
 
 	// Contact the server and print out its response.
-	ctx := context.Background() // TODO: add a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	r, err := c.DoProbes(ctx, &pb.ProbeRequest{Endpoint: *endpoint, NumberOfRequests: int32(*nOfRequests)})
+	cancel()
 
-	// TODO: endpoint should be a flag
-	// TODO: add number of times to probe
-	r, err := c.DoProbes(ctx, &pb.ProbeRequest{Endpoint: "http://www.google.com"})
 	if err != nil {
 		log.Fatalf("could not probe: %v", err)
 	}
-	log.Printf("Response Time: %f", r.GetResult())
+
+	if int(r.FailedRequests) == *nOfRequests {
+		log.Printf("all requests failed")
+	} else {
+		log.Printf("Response Time: %f", r.AverageResponseTime)
+		if r.FailedRequests > 0 {
+			log.Printf("Failed Requests: %d", r.FailedRequests)
+		}
+	}
 }

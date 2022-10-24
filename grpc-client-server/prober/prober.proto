@@ -12,10 +12,13 @@ service Prober {
 // The request message 
 message ProbeRequest {
   string endpoint = 1;
+  int32 numberOfRequests = 2;
 }
 
 // The response message containing the result
+// returns the average response time
 message ProbeReply {
-  float result = 1;
+  float averageResponseTime = 1;
+  int32 failedRequests = 2;
 }
 
