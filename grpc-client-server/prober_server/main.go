@@ -10,11 +10,17 @@ import (
 	"time"
 
 	pb "github.com/CodeYourFuture/immersive-go-course/grpc-client-server/prober"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 )
 
 var (
-	port = flag.Int("port", 50051, "The server port")
+	port  = flag.Int("port", 50051, "The server port")
+	gauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "latency_gauge",
+		Help: "The latency of the requests to the endpoint",
+	}, []string{"endpoint"})
 )
 
 // server is used to implement prober.ProberServer.
@@ -42,6 +48,7 @@ func (s *server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 		}
 		elapsed := time.Since(start)
 		elapsedMsecs := float32(elapsed / time.Millisecond)
+		gauge.WithLabelValues(in.GetEndpoint()).Set(float64(elapsedMsecs))
 		totalMsecs += int(elapsedMsecs)
 	}
 	averageMsecs := float32(totalMsecs) / float32(in.NumberOfRequests)
@@ -50,6 +57,11 @@ func (s *server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 }
 
 func main() {
+	prometheus.MustRegister(gauge)
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":2112", nil)
+	}()
 	flag.Parse()
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
