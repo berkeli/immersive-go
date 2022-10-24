@@ -39,8 +39,16 @@ func Download(in <-chan *Out, out chan *Out, wg *sync.WaitGroup) {
 	// Download the image from the URL
 	// Send the image to the convert channel
 	defer wg.Done()
+	var (
+		row  *Out
+		ok   bool
+		body io.Reader
+		err  error
+		ext  string
+	)
 	for {
-		row, ok := <-in
+
+		row, ok = <-in
 		if !ok {
 			break
 		}
@@ -48,7 +56,7 @@ func Download(in <-chan *Out, out chan *Out, wg *sync.WaitGroup) {
 			out <- row
 			continue
 		}
-		body, ext, err := DownloadFileFromUrl(row.Url)
+		body, ext, err = DownloadFileFromUrl(row.Url)
 		if err != nil {
 			row.Err = err
 			out <- row

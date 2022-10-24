@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -80,6 +82,11 @@ func main() {
 	c := &Converter{
 		cmd: imagick.ConvertImageCommand,
 	}
+
+	// start monitoring the pipeline
+	go func() {
+		http.ListenAndServe(":6060", nil)
+	}()
 
 	config := &Config{
 		InputFilepath:        *inputFilepath,
