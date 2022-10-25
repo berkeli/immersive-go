@@ -24,11 +24,11 @@ var (
 )
 
 // server is used to implement prober.ProberServer.
-type server struct {
+type Server struct {
 	pb.UnimplementedProberServer
 }
 
-func (s *server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeReply, error) {
+func (s *Server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeReply, error) {
 	// TODO: support a number of repetitions and return average latency
 	totalMsecs := 0
 	failed := 0
@@ -72,7 +72,7 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	pb.RegisterProberServer(s, &server{})
+	pb.RegisterProberServer(s, &Server{})
 	log.Printf("server listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)

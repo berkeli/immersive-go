@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -28,7 +29,7 @@ type Result struct {
 type ArrayFlag []string
 
 func (i *ArrayFlag) String() string {
-	return strings.Join(*i, ",")
+	return strings.Join(*i, ", ")
 }
 
 func (i *ArrayFlag) Set(value string) error {
@@ -65,15 +66,15 @@ func main() {
 	for _, endpoint := range endpoints {
 		req := &pb.ProbeRequest{Endpoint: endpoint, NumberOfRequests: int32(*nOfRequests)}
 		wg.Add(1)
-		go SingleProbe(c, req, &wg)
+		go SingleProbe(os.Stdout, c, req, &wg)
 	}
 	wg.Wait()
 }
 
-func SingleProbe(c pb.ProberClient, req *pb.ProbeRequest, wg *sync.WaitGroup) {
+func SingleProbe(w io.Writer, c pb.ProberClient, req *pb.ProbeRequest, wg *sync.WaitGroup) {
 	results := make(chan *Result)
 	timeout := time.Duration(*timeout) * time.Second
-	go CreateProgressBar(timeout, req.Endpoint, results, wg)
+	go CreateProgressBar(w, timeout, req.Endpoint, results, wg)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	r, err := c.DoProbes(ctx, req)
 	cancel()
@@ -88,14 +89,13 @@ func SingleProbe(c pb.ProberClient, req *pb.ProbeRequest, wg *sync.WaitGroup) {
 		Failed:   r.FailedRequests,
 		Average:  r.AverageResponseTime,
 	}
-
 }
 
-func CreateProgressBar(timeout time.Duration, endpoint string, results <-chan *Result, wg *sync.WaitGroup) {
+func CreateProgressBar(w io.Writer, timeout time.Duration, endpoint string, results <-chan *Result, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ticker := 200 * time.Millisecond
 	bar := progressbar.NewOptions(int(timeout/ticker),
-		progressbar.OptionSetWriter(os.Stdout),
+		progressbar.OptionSetWriter(w),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionSetWidth(15),
 		progressbar.OptionSetDescription(fmt.Sprintf("[cyan]Probing: %s", endpoint)),
@@ -114,21 +114,21 @@ func CreateProgressBar(timeout time.Duration, endpoint string, results <-chan *R
 			if res.Err == nil {
 				bar.Finish()
 			}
-			PrintResults(res)
+			PrintResults(w, res, nOfRequests)
 			return
 		}
 	}
 }
 
-func PrintResults(res *Result) {
-	fmt.Println()
+func PrintResults(w io.Writer, res *Result, n *int) {
+	fmt.Fprintln(w)
 	if res.Err != nil {
-		fmt.Printf("Could not probe: %v", res.Err)
+		fmt.Fprintf(w, "Could not probe %s: %v", res.Endpoint, res.Err)
 		return
 	}
 	t := table.NewWriter()
-	t.SetOutputMirror(os.Stdout)
+	t.SetOutputMirror(w)
 	t.AppendHeader(table.Row{"Average Latency", "Success rate %", "Failed Reuqests"})
-	t.AppendRow(table.Row{res.Average, 100 - (float32(res.Failed) / float32(*nOfRequests) * 100), res.Failed})
+	t.AppendRow(table.Row{res.Average, 100 - (float32(res.Failed) / float32(*n) * 100), res.Failed})
 	t.Render()
 }
