@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/CodeYourFuture/immersive-go-course/grpc-client-server/prober";
+option go_package = "github.com/Berkeli/immersive-go/grpc-client-server/prober";
 
 package prober;
 

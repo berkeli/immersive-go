@@ -9,15 +9,15 @@ import (
 	"net/http"
 	"time"
 
-	pb "github.com/CodeYourFuture/immersive-go-course/grpc-client-server/prober"
+	pb "github.com/Berkeli/immersive-go/grpc-client-server/prober"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 )
 
 var (
-	port  = flag.Int("port", 50051, "The server port")
-	gauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	port         = flag.Int("port", 50051, "The server port")
+	LatencyGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "latency_gauge",
 		Help: "The latency of the requests to the endpoint",
 	}, []string{"endpoint"})
@@ -32,7 +32,7 @@ func (s *server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 	// TODO: support a number of repetitions and return average latency
 	totalMsecs := 0
 	failed := 0
-	for i := 0; i < int(in.NumberOfRequests); i++ {
+	for i := 0; i < int(in.GetNumberOfRequests()); i++ {
 		start := time.Now()
 		resp, err := http.Get(in.GetEndpoint())
 		if err != nil {
@@ -48,7 +48,7 @@ func (s *server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 		}
 		elapsed := time.Since(start)
 		elapsedMsecs := float32(elapsed / time.Millisecond)
-		gauge.WithLabelValues(in.GetEndpoint()).Set(float64(elapsedMsecs))
+		LatencyGauge.WithLabelValues(in.GetEndpoint()).Set(float64(elapsedMsecs))
 		totalMsecs += int(elapsedMsecs)
 	}
 	averageMsecs := float32(totalMsecs) / float32(in.NumberOfRequests)
@@ -56,13 +56,17 @@ func (s *server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 	return &pb.ProbeReply{AverageResponseTime: averageMsecs, FailedRequests: int32(failed)}, nil
 }
 
-func main() {
-	prometheus.MustRegister(gauge)
+func InitMonitoring() {
+	prometheus.MustRegister(LatencyGauge)
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		http.ListenAndServe(":2112", nil)
 	}()
+}
+
+func main() {
 	flag.Parse()
+	InitMonitoring()
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
