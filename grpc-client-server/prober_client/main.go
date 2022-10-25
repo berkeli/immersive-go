@@ -111,7 +111,9 @@ func CreateProgressBar(timeout time.Duration, endpoint string, results <-chan *R
 		case <-time.After(ticker):
 			bar.Add(1)
 		case res := <-results:
-			bar.Finish()
+			if res.Err == nil {
+				bar.Finish()
+			}
 			PrintResults(res)
 			return
 		}
@@ -119,11 +121,11 @@ func CreateProgressBar(timeout time.Duration, endpoint string, results <-chan *R
 }
 
 func PrintResults(res *Result) {
+	fmt.Println()
 	if res.Err != nil {
-		fmt.Printf("[red]Error: %v[reset]", res.Err)
+		fmt.Printf("Could not probe: %v", res.Err)
 		return
 	}
-	fmt.Println()
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
 	t.AppendHeader(table.Row{"Average Latency", "Success rate %", "Failed Reuqests"})
