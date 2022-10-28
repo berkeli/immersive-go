@@ -12,7 +12,16 @@ import (
 var TEST_DB_URL = "postgres://berkeli:postgres@localhost:5432/go_server_test_db"
 
 var TestDbData = []Image{
-	
+	{
+		Title:   "A cute kitten",
+		AltText: "A kitten looking mischievous",
+		Url:     "https://placekitten.com/200/300",
+	},
+	{
+		Title:   "A cute puppy",
+		AltText: "A puppy looking mischievous",
+		Url:     "https://placedog.net/200/300",
+	},
 }
 
 func SetupSuite(tb testing.TB) (*pgx.Conn, func(tb testing.TB)) {

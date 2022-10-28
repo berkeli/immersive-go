@@ -13,7 +13,7 @@ function fetchImages(development) {
       },
     ]);
   }
-  return fetch(`${API_URL}/images.json`).then((_) => _.json());
+  return fetch("/api/images.json").then((_) => _.json());
 }
 
 function timeout(t, v) {

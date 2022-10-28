@@ -1,0 +1,26 @@
+name: Multiple servers tests
+
+on: [push]
+
+defaults:
+  run:
+    working-directory: multiple-servers
+
+jobs:
+  test_app:
+    name: Build and test go app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version-file: "multiple-servers/go.mod"
+          cache-dependency-path: "multiple-servers/go.sum"
+          cache: true
+      - name: Bild docker image
+        run: docker build -t multi-aio:latest -f aio.Dockerfile .
+
+      - name: Test
+        run: go test -v ./...
