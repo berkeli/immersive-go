@@ -7,7 +7,8 @@ defaults:
     working-directory: multiple-servers
 
 jobs:
-  runner-job:
+  test_app:
+    name: Build and test go app
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -23,11 +24,6 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-
-
-  test_app:
-    name: Build and test go app
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
