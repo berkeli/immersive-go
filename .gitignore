@@ -1,3 +1,6 @@
+
 !*/assets
 **/coverage.out*
 .vscode
+.DS_Store
+!*/assets
