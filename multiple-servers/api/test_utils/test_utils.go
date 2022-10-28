@@ -3,6 +3,7 @@ package test_utils
 import (
 	"context"
 	. "multiple-servers/api/types"
+	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v4"
@@ -25,6 +26,14 @@ var TestDbData = []Image{
 }
 
 func SetupSuite(tb testing.TB) (*pgx.Conn, func(tb testing.TB)) {
+
+	tb.Helper()
+
+	DB_URL := os.Getenv("DATABASE_URL")
+
+	if DB_URL != "" {
+		TEST_DB_URL = DB_URL
+	}
 
 	conn, err := pgx.Connect(context.Background(), TEST_DB_URL)
 	require.NoError(tb, err)

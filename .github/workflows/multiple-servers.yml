@@ -7,6 +7,24 @@ defaults:
     working-directory: multiple-servers
 
 jobs:
+  runner-job:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: go_server_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+
   test_app:
     name: Build and test go app
     runs-on: ubuntu-latest
@@ -23,4 +41,4 @@ jobs:
         run: docker build -t multi-aio:latest -f aio.Dockerfile .
 
       - name: Test
-        run: go test -v ./...
+        run: DATABASE_URL=postgres://postgres:postgres@localhost:5432/go_server_db go test -v ./...
