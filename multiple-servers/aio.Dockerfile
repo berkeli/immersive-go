@@ -6,7 +6,7 @@ COPY static static
 COPY api api
 COPY cmd/api-server cmd/api-server
 COPY cmd/static-server cmd/static-server
-COPY go* .
+COPY go* ./
 
 RUN go mod download
 
