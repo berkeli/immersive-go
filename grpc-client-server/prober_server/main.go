@@ -22,7 +22,6 @@ var (
 		Name: "latency_gauge",
 		Help: "The latency of the requests to the endpoint",
 	}, []string{"endpoint"})
-	timeNow   = time.Now
 	timeSince = time.Since
 )
 
@@ -35,7 +34,7 @@ func (s *Server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 	total := time.Duration(0)
 	failed := 0
 	for i := 0; i < int(in.GetNumberOfRequests()); i++ {
-		start := timeNow()
+		start := time.Now()
 		resp, err := http.Get(in.GetEndpoint())
 		if err != nil {
 			log.Printf("could not probe: %v", err)
