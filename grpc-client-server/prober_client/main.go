@@ -22,7 +22,7 @@ import (
 type Result struct {
 	Endpoint string
 	Failed   int32
-	Average  float32
+	Average  time.Duration
 	Err      error
 }
 
@@ -41,7 +41,7 @@ var (
 	endpoints   = ArrayFlag{}
 	addr        = flag.String("addr", "localhost:50051", "the address to connect to")
 	nOfRequests = flag.Int("tries", 1, "number of requests to make")
-	timeout     = flag.Int("timeout", 3, "timeout in seconds, how long should we allow for probing")
+	timeout     = flag.Duration("timeout", 3*time.Second, "timeout, how long should we allow for probing. Provide values like 100ms, 1s, 1m")
 )
 
 func main() {
@@ -73,9 +73,8 @@ func main() {
 
 func SingleProbe(w io.Writer, c pb.ProberClient, req *pb.ProbeRequest, wg *sync.WaitGroup) {
 	results := make(chan *Result)
-	timeout := time.Duration(*timeout) * time.Second
-	go CreateProgressBar(w, timeout, req.Endpoint, results, wg)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	go CreateProgressBar(w, *timeout, req.Endpoint, results, wg)
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	r, err := c.DoProbes(ctx, req)
 	cancel()
 
@@ -87,7 +86,7 @@ func SingleProbe(w io.Writer, c pb.ProberClient, req *pb.ProbeRequest, wg *sync.
 	results <- &Result{
 		Endpoint: req.Endpoint,
 		Failed:   r.FailedRequests,
-		Average:  r.AverageResponseTime,
+		Average:  r.AverageResponseTime.AsDuration(),
 	}
 }
 
@@ -129,6 +128,7 @@ func PrintResults(w io.Writer, res *Result, n *int) {
 	t := table.NewWriter()
 	t.SetOutputMirror(w)
 	t.AppendHeader(table.Row{"Average Latency", "Success rate %", "Failed Reuqests"})
-	t.AppendRow(table.Row{res.Average, 100 - (float32(res.Failed) / float32(*n) * 100), res.Failed})
+	timeInMs := fmt.Sprintf("%v", res.Average)
+	t.AppendRow(table.Row{timeInMs, 100 - (float32(res.Failed) / float32(*n) * 100), res.Failed})
 	t.Render()
 }

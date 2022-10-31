@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 var (
@@ -21,6 +22,8 @@ var (
 		Name: "latency_gauge",
 		Help: "The latency of the requests to the endpoint",
 	}, []string{"endpoint"})
+	timeNow   = time.Now
+	timeSince = time.Since
 )
 
 // server is used to implement prober.ProberServer.
@@ -29,31 +32,29 @@ type Server struct {
 }
 
 func (s *Server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeReply, error) {
-	// TODO: support a number of repetitions and return average latency
-	totalMsecs := 0
+	total := time.Duration(0)
 	failed := 0
 	for i := 0; i < int(in.GetNumberOfRequests()); i++ {
-		start := time.Now()
+		start := timeNow()
 		resp, err := http.Get(in.GetEndpoint())
 		if err != nil {
 			log.Printf("could not probe: %v", err)
 			failed++
 			continue
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			log.Printf("Received status %d during probe", resp.StatusCode)
 			failed++
 			continue
 		}
-		elapsed := time.Since(start)
-		elapsedMsecs := float32(elapsed / time.Millisecond)
-		LatencyGauge.WithLabelValues(in.GetEndpoint()).Set(float64(elapsedMsecs))
-		totalMsecs += int(elapsedMsecs)
+		resp.Body.Close()
+		elapsed := timeSince(start)
+		LatencyGauge.WithLabelValues(in.GetEndpoint()).Set(float64(elapsed / time.Millisecond))
+		total += elapsed
 	}
-	averageMsecs := float32(totalMsecs) / float32(in.NumberOfRequests)
+	average := time.Duration(float32(total) / float32(in.NumberOfRequests))
 
-	return &pb.ProbeReply{AverageResponseTime: averageMsecs, FailedRequests: int32(failed)}, nil
+	return &pb.ProbeReply{AverageResponseTime: durationpb.New(average), FailedRequests: int32(failed)}, nil
 }
 
 func InitMonitoring() {

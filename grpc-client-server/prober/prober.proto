@@ -2,6 +2,8 @@ syntax = "proto3";
 
 option go_package = "github.com/Berkeli/immersive-go/grpc-client-server/prober";
 
+import "google/protobuf/duration.proto";
+
 package prober;
 
 // The prober service definition.
@@ -18,7 +20,7 @@ message ProbeRequest {
 // The response message containing the result
 // returns the average response time
 message ProbeReply {
-  float averageResponseTime = 1;
+  google.protobuf.Duration averageResponseTime = 1;
   int32 failedRequests = 2;
 }
 

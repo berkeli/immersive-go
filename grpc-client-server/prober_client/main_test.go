@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type mockProbeServer struct {
@@ -27,7 +28,7 @@ func (*mockProbeServer) DoProbes(ctx context.Context, req *pb.ProbeRequest) (*pb
 		return nil, grpc.Errorf(15, "error")
 	}
 	return &pb.ProbeReply{
-		AverageResponseTime: 123.123,
+		AverageResponseTime: durationpb.New(123123 * time.Microsecond),
 		FailedRequests:      0,
 	}, nil
 }
@@ -49,8 +50,6 @@ func dialer() func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
 	}
 }
-
-var lis = bufconn.Listen(1024 * 1024)
 
 func TestArrayFlag(t *testing.T) {
 	t.Run("String", func(t *testing.T) {
@@ -116,7 +115,7 @@ func TestGRpc(t *testing.T) {
 
 	require.NoError(t, err)
 
-	require.Equal(t, resp.AverageResponseTime, float32(123.123))
+	require.Equal(t, resp.AverageResponseTime, durationpb.New(123123*time.Microsecond))
 	require.Equal(t, resp.FailedRequests, int32(0))
 }
 
@@ -163,7 +162,7 @@ func TestCreateProgressBar(t *testing.T) {
 
 	res <- &Result{
 		Endpoint: "http://localhost:8080",
-		Average:  123.232,
+		Average:  123232 * time.Microsecond,
 	}
 
 	want := `
@@ -171,7 +170,7 @@ Probing: http://localhost:8080 100% [===============]
 +-----------------+----------------+-----------------+
 | AVERAGE LATENCY | SUCCESS RATE % | FAILED REUQESTS |
 +-----------------+----------------+-----------------+
-|         123.232 |            100 |               0 |
+| 123.232ms       |            100 |               0 |
 +-----------------+----------------+-----------------+
 `
 
@@ -194,27 +193,27 @@ func TestPrintResults(t *testing.T) {
 		"success": {
 			res: &Result{
 				Endpoint: "http://localhost:8080",
-				Average:  123.232,
+				Average:  123 * time.Millisecond,
 			},
 			want: `
 +-----------------+----------------+-----------------+
 | AVERAGE LATENCY | SUCCESS RATE % | FAILED REUQESTS |
 +-----------------+----------------+-----------------+
-|         123.232 |            100 |               0 |
+| 123ms           |            100 |               0 |
 +-----------------+----------------+-----------------+
 `,
 		},
 		"partial error": {
 			res: &Result{
 				Endpoint: "http://localhost:8080",
-				Average:  123,
+				Average:  123 * time.Millisecond,
 				Failed:   1,
 			},
 			want: `
 +-----------------+----------------+-----------------+
 | AVERAGE LATENCY | SUCCESS RATE % | FAILED REUQESTS |
 +-----------------+----------------+-----------------+
-|             123 |             50 |               1 |
+| 123ms           |             50 |               1 |
 +-----------------+----------------+-----------------+
 `,
 		},

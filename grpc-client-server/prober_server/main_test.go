@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"testing"
+	"time"
 
 	pb "github.com/Berkeli/immersive-go/grpc-client-server/prober"
 	"github.com/stretchr/testify/require"
@@ -69,4 +70,25 @@ func TestDoProbes(t *testing.T) {
 			require.Equal(t, tc.failedReq, resp.FailedRequests)
 		})
 	}
+
+	t.Run("response time", func(t *testing.T) {
+		conn, err := grpc.DialContext(context.Background(), "bufnet", grpc.WithContextDialer(dialer()), grpc.WithInsecure())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		client := pb.NewProberClient(conn)
+
+		timeSince = func(t time.Time) time.Duration {
+			return 2 * time.Second
+		}
+
+		resp, err := client.DoProbes(context.Background(), &pb.ProbeRequest{
+			Endpoint:         "http://google.com",
+			NumberOfRequests: 1,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp.AverageResponseTime)
+		require.Equal(t, 2*time.Second, resp.AverageResponseTime.AsDuration())
+	})
 }
