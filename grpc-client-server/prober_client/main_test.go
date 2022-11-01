@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
-	"net"
 	"strings"
 	"sync"
 	"testing"
@@ -15,41 +13,8 @@ import (
 	"github.com/acarl005/stripansi"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
-
-type mockProbeServer struct {
-	pb.UnimplementedProberServer
-}
-
-func (*mockProbeServer) DoProbes(ctx context.Context, req *pb.ProbeRequest) (*pb.ProbeReply, error) {
-	if req.Endpoint == "http://musterror:8080" {
-		return nil, grpc.Errorf(15, "error")
-	}
-	return &pb.ProbeReply{
-		AverageResponseTime: durationpb.New(123123 * time.Microsecond),
-		FailedRequests:      0,
-	}, nil
-}
-
-func dialer() func(context.Context, string) (net.Conn, error) {
-	listener := bufconn.Listen(1024 * 1024)
-
-	server := grpc.NewServer()
-
-	pb.RegisterProberServer(server, &mockProbeServer{})
-
-	go func() {
-		if err := server.Serve(listener); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	return func(context.Context, string) (net.Conn, error) {
-		return listener.Dial()
-	}
-}
 
 func TestArrayFlag(t *testing.T) {
 	t.Run("String", func(t *testing.T) {
@@ -105,7 +70,7 @@ func TestArrayFlag(t *testing.T) {
 func TestGRpc(t *testing.T) {
 
 	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "", grpc.WithInsecure(), grpc.WithContextDialer(dialer()))
+	conn, err := grpc.DialContext(ctx, "", grpc.WithInsecure(), grpc.WithContextDialer(MockDialer()))
 	require.NoError(t, err)
 
 	defer conn.Close()
@@ -115,13 +80,13 @@ func TestGRpc(t *testing.T) {
 
 	require.NoError(t, err)
 
-	require.Equal(t, resp.AverageResponseTime, durationpb.New(123123*time.Microsecond))
+	require.Equal(t, resp.TtfbAverageResponseTime, durationpb.New(123123*time.Microsecond))
 	require.Equal(t, resp.FailedRequests, int32(0))
 }
 
 func TestSingleProbe(t *testing.T) {
 	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "", grpc.WithInsecure(), grpc.WithContextDialer(dialer()))
+	conn, err := grpc.DialContext(ctx, "", grpc.WithInsecure(), grpc.WithContextDialer(MockDialer()))
 	require.NoError(t, err)
 
 	defer conn.Close()
@@ -161,17 +126,18 @@ func TestCreateProgressBar(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	res <- &Result{
-		Endpoint: "http://localhost:8080",
-		Average:  123232 * time.Microsecond,
+		Endpoint:                "http://localhost:8080",
+		TtfbAverageResponseTime: 123232 * time.Microsecond,
+		TtlbAverageResponseTime: 223232 * time.Microsecond,
 	}
 
 	want := `
 Probing: http://localhost:8080 100% [===============] 
-+-----------------+----------------+-----------------+
-| AVERAGE LATENCY | SUCCESS RATE % | FAILED REUQESTS |
-+-----------------+----------------+-----------------+
-| 123.232ms       |            100 |               0 |
-+-----------------+----------------+-----------------+
++--------------+--------------+----------------+-----------------+
+| AVERAGE TTFB | AVERAGE TTLB | SUCCESS RATE % | FAILED REUQESTS |
++--------------+--------------+----------------+-----------------+
+|    123.232ms |    223.232ms |            100 |               0 |
++--------------+--------------+----------------+-----------------+
 `
 
 	wg.Add(1)
@@ -192,29 +158,31 @@ func TestPrintResults(t *testing.T) {
 	}{
 		"success": {
 			res: &Result{
-				Endpoint: "http://localhost:8080",
-				Average:  123 * time.Millisecond,
+				Endpoint:                "http://localhost:8080",
+				TtfbAverageResponseTime: 123 * time.Millisecond,
+				TtlbAverageResponseTime: 223 * time.Millisecond,
 			},
 			want: `
-+-----------------+----------------+-----------------+
-| AVERAGE LATENCY | SUCCESS RATE % | FAILED REUQESTS |
-+-----------------+----------------+-----------------+
-| 123ms           |            100 |               0 |
-+-----------------+----------------+-----------------+
++--------------+--------------+----------------+-----------------+
+| AVERAGE TTFB | AVERAGE TTLB | SUCCESS RATE % | FAILED REUQESTS |
++--------------+--------------+----------------+-----------------+
+|        123ms |        223ms |            100 |               0 |
++--------------+--------------+----------------+-----------------+
 `,
 		},
 		"partial error": {
 			res: &Result{
-				Endpoint: "http://localhost:8080",
-				Average:  123 * time.Millisecond,
-				Failed:   1,
+				Endpoint:                "http://localhost:8080",
+				TtfbAverageResponseTime: 123 * time.Millisecond,
+				TtlbAverageResponseTime: 223 * time.Millisecond,
+				Failed:                  1,
 			},
 			want: `
-+-----------------+----------------+-----------------+
-| AVERAGE LATENCY | SUCCESS RATE % | FAILED REUQESTS |
-+-----------------+----------------+-----------------+
-| 123ms           |             50 |               1 |
-+-----------------+----------------+-----------------+
++--------------+--------------+----------------+-----------------+
+| AVERAGE TTFB | AVERAGE TTLB | SUCCESS RATE % | FAILED REUQESTS |
++--------------+--------------+----------------+-----------------+
+|        123ms |        223ms |             50 |               1 |
++--------------+--------------+----------------+-----------------+
 `,
 		},
 		"full error": {

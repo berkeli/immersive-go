@@ -20,10 +20,11 @@ import (
 )
 
 type Result struct {
-	Endpoint string
-	Failed   int32
-	Average  time.Duration
-	Err      error
+	Endpoint                string
+	Failed                  int32
+	TtfbAverageResponseTime time.Duration
+	TtlbAverageResponseTime time.Duration
+	Err                     error
 }
 
 type ArrayFlag []string
@@ -75,8 +76,8 @@ func SingleProbe(w io.Writer, c pb.ProberClient, req *pb.ProbeRequest, wg *sync.
 	results := make(chan *Result)
 	go CreateProgressBar(w, *timeout, req.Endpoint, results, wg)
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
 	r, err := c.DoProbes(ctx, req)
-	cancel()
 
 	if err != nil {
 		results <- &Result{Endpoint: req.Endpoint, Err: err}
@@ -84,9 +85,10 @@ func SingleProbe(w io.Writer, c pb.ProberClient, req *pb.ProbeRequest, wg *sync.
 	}
 
 	results <- &Result{
-		Endpoint: req.Endpoint,
-		Failed:   r.FailedRequests,
-		Average:  r.AverageResponseTime.AsDuration(),
+		Endpoint:                req.Endpoint,
+		Failed:                  r.FailedRequests,
+		TtfbAverageResponseTime: r.TtfbAverageResponseTime.AsDuration(),
+		TtlbAverageResponseTime: r.TtlbAverageResponseTime.AsDuration(),
 	}
 }
 
@@ -127,8 +129,7 @@ func PrintResults(w io.Writer, res *Result, n *int) {
 	}
 	t := table.NewWriter()
 	t.SetOutputMirror(w)
-	t.AppendHeader(table.Row{"Average Latency", "Success rate %", "Failed Reuqests"})
-	timeInMs := fmt.Sprintf("%v", res.Average)
-	t.AppendRow(table.Row{timeInMs, 100 - (float32(res.Failed) / float32(*n) * 100), res.Failed})
+	t.AppendHeader(table.Row{"Average TTFB", "Average TTLB", "Success rate %", "Failed Reuqests"})
+	t.AppendRow(table.Row{res.TtfbAverageResponseTime, res.TtlbAverageResponseTime, 100 - (float32(res.Failed) / float32(*n) * 100), res.Failed})
 	t.Render()
 }

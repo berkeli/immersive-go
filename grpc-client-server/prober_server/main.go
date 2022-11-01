@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"time"
 
 	pb "github.com/Berkeli/immersive-go/grpc-client-server/prober"
@@ -21,7 +23,7 @@ var (
 	LatencyGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "latency_gauge",
 		Help: "The latency of the requests to the endpoint",
-	}, []string{"endpoint"})
+	}, []string{"endpoint", "type"})
 	timeSince = time.Since
 )
 
@@ -31,29 +33,29 @@ type Server struct {
 }
 
 func (s *Server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeReply, error) {
-	total := time.Duration(0)
+	ttfbTotal := time.Duration(0)
+	ttlbTotal := time.Duration(0)
 	failed := 0
 	for i := 0; i < int(in.GetNumberOfRequests()); i++ {
-		start := time.Now()
-		resp, err := http.Get(in.GetEndpoint())
+		ttfb, ttlb, err := TimedProbe(in.GetEndpoint())
 		if err != nil {
 			log.Printf("could not probe: %v", err)
 			failed++
 			continue
 		}
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("Received status %d during probe", resp.StatusCode)
-			failed++
-			continue
-		}
-		resp.Body.Close()
-		elapsed := timeSince(start)
-		LatencyGauge.WithLabelValues(in.GetEndpoint()).Set(float64(elapsed / time.Millisecond))
-		total += elapsed
+		LatencyGauge.WithLabelValues(in.GetEndpoint(), "TTFB").Set(float64(ttfb / time.Millisecond))
+		LatencyGauge.WithLabelValues(in.GetEndpoint(), "TTLB").Set(float64(ttlb / time.Millisecond))
+		ttfbTotal += ttfb
+		ttlbTotal += ttlb
 	}
-	average := time.Duration(float32(total) / float32(in.NumberOfRequests))
+	ttfbAverage := time.Duration(float32(ttfbTotal) / float32(in.NumberOfRequests))
+	ttlbAverage := time.Duration(float32(ttlbTotal) / float32(in.NumberOfRequests))
 
-	return &pb.ProbeReply{AverageResponseTime: durationpb.New(average), FailedRequests: int32(failed)}, nil
+	return &pb.ProbeReply{
+		TtfbAverageResponseTime: durationpb.New(ttfbAverage),
+		TtlbAverageResponseTime: durationpb.New(ttlbAverage),
+		FailedRequests:          int32(failed),
+	}, nil
 }
 
 func InitMonitoring() {
@@ -77,4 +79,41 @@ func main() {
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
+}
+
+func TimedProbe(url string) (ttfb, ttlb time.Duration, err error) {
+
+	var start time.Time
+
+	trace := &httptrace.ClientTrace{
+		GotFirstResponseByte: func() {
+			ttfb = timeSince(start)
+		},
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+
+	if err != nil {
+		return ttfb, ttlb, err
+	}
+
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+
+	start = time.Now()
+
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		return ttfb, ttlb, err
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return ttfb, ttlb, fmt.Errorf("status code %d", resp.StatusCode)
+	}
+
+	_, err = io.ReadAll(resp.Body)
+
+	ttlb = timeSince(start)
+	resp.Body.Close()
+
+	return ttfb, ttlb, nil
 }

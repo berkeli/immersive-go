@@ -20,7 +20,8 @@ message ProbeRequest {
 // The response message containing the result
 // returns the average response time
 message ProbeReply {
-  google.protobuf.Duration averageResponseTime = 1;
-  int32 failedRequests = 2;
+  google.protobuf.Duration ttfbAverageResponseTime = 1;
+  google.protobuf.Duration ttlbAverageResponseTime = 2;
+  int32 failedRequests = 3;
 }
 

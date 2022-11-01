@@ -39,7 +39,7 @@ func TestDoProbes(t *testing.T) {
 	}{
 		"simple": {
 			req: &pb.ProbeRequest{
-				Endpoint:         "http://google.com",
+				Endpoint:         "https://www.google.com",
 				NumberOfRequests: 1,
 			},
 			failedReq: 0,
@@ -64,7 +64,7 @@ func TestDoProbes(t *testing.T) {
 			resp, err := client.DoProbes(context.Background(), tc.req)
 
 			if err == nil {
-				require.NotNil(t, resp.AverageResponseTime)
+				require.NotNil(t, resp.TtfbAverageResponseTime)
 			}
 
 			require.Equal(t, tc.failedReq, resp.FailedRequests)
@@ -78,17 +78,36 @@ func TestDoProbes(t *testing.T) {
 
 		client := pb.NewProberClient(conn)
 
+		callsToTimeSince := 1
 		timeSince = func(t time.Time) time.Duration {
-			return 2 * time.Second
+			callsToTimeSince++
+			return time.Duration(callsToTimeSince) * time.Second
 		}
 
 		resp, err := client.DoProbes(context.Background(), &pb.ProbeRequest{
-			Endpoint:         "http://google.com",
+			Endpoint:         "https://www.google.com",
 			NumberOfRequests: 1,
 		})
 
 		require.NoError(t, err)
-		require.NotNil(t, resp.AverageResponseTime)
-		require.Equal(t, 2*time.Second, resp.AverageResponseTime.AsDuration())
+		require.NotNil(t, resp.TtfbAverageResponseTime)
+		require.NotNil(t, resp.TtlbAverageResponseTime)
+		require.Equal(t, 2*time.Second, resp.TtfbAverageResponseTime.AsDuration())
+		require.Equal(t, 3*time.Second, resp.TtlbAverageResponseTime.AsDuration())
+	})
+}
+
+func TestTimedProbe(t *testing.T) {
+	t.Run("must return valid values", func(t *testing.T) {
+		callsToTimeSince := 0
+		timeSince = func(t time.Time) time.Duration {
+			callsToTimeSince++
+			return time.Duration(callsToTimeSince) * time.Second
+		}
+		ttfb, ttlb, err := TimedProbe("https://www.google.com")
+
+		require.NoError(t, err)
+		require.Equal(t, 1*time.Second, ttfb)
+		require.Equal(t, 2*time.Second, ttlb)
 	})
 }
