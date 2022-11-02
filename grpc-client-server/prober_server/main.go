@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/httptrace"
 	"time"
 
 	pb "github.com/Berkeli/immersive-go/grpc-client-server/prober"
@@ -27,6 +26,11 @@ var (
 	timeSince = time.Since
 )
 
+type ResponseTime struct {
+	Ttfb time.Duration
+	Ttlb time.Duration
+}
+
 // server is used to implement prober.ProberServer.
 type Server struct {
 	pb.UnimplementedProberServer
@@ -36,20 +40,31 @@ func (s *Server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 	ttfbTotal := time.Duration(0)
 	ttlbTotal := time.Duration(0)
 	failed := 0
+	latestTtfb := time.Duration(0)
+
+	c := &http.Client{
+		Transport: &TimedRoundTripper{
+			defaultTripper: http.DefaultTransport,
+			recordTime: func(t time.Duration) {
+				latestTtfb = t
+				ttfbTotal += t
+			},
+		},
+	}
+
 	for i := 0; i < int(in.GetNumberOfRequests()); i++ {
-		ttfb, ttlb, err := TimedProbe(in.GetEndpoint())
+		ttlb, err := TimedProbe(c, in.GetEndpoint())
 		if err != nil {
 			log.Printf("could not probe: %v", err)
 			failed++
 			continue
 		}
-		LatencyGauge.WithLabelValues(in.GetEndpoint(), "TTFB").Set(float64(ttfb / time.Millisecond))
+		LatencyGauge.WithLabelValues(in.GetEndpoint(), "TTFB").Set(float64(latestTtfb / time.Millisecond))
 		LatencyGauge.WithLabelValues(in.GetEndpoint(), "TTLB").Set(float64(ttlb / time.Millisecond))
-		ttfbTotal += ttfb
 		ttlbTotal += ttlb
 	}
-	ttfbAverage := time.Duration(float32(ttfbTotal) / float32(in.NumberOfRequests))
-	ttlbAverage := time.Duration(float32(ttlbTotal) / float32(in.NumberOfRequests))
+	ttfbAverage := time.Duration(float32(ttfbTotal) / float32(in.NumberOfRequests-int32(failed)))
+	ttlbAverage := time.Duration(float32(ttlbTotal) / float32(in.NumberOfRequests-int32(failed)))
 
 	return &pb.ProbeReply{
 		TtfbAverageResponseTime: durationpb.New(ttfbAverage),
@@ -57,7 +72,6 @@ func (s *Server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 		FailedRequests:          int32(failed),
 	}, nil
 }
-
 func InitMonitoring() {
 	prometheus.MustRegister(LatencyGauge)
 	go func() {
@@ -81,39 +95,47 @@ func main() {
 	}
 }
 
-func TimedProbe(url string) (ttfb, ttlb time.Duration, err error) {
-
+func TimedProbe(c *http.Client, url string) (ttlb time.Duration, err error) {
 	var start time.Time
-
-	trace := &httptrace.ClientTrace{
-		GotFirstResponseByte: func() {
-			ttfb = timeSince(start)
-		},
-	}
+	nullTime := time.Duration(0)
 
 	req, err := http.NewRequest("GET", url, nil)
 
 	if err != nil {
-		return ttfb, ttlb, err
+		return nullTime, err
 	}
-
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
-
 	start = time.Now()
 
-	resp, err := http.DefaultTransport.RoundTrip(req)
+	resp, err := c.Transport.RoundTrip(req)
 	if err != nil {
-		return ttfb, ttlb, err
+		return nullTime, err
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return ttfb, ttlb, fmt.Errorf("status code %d", resp.StatusCode)
+		return ttlb, fmt.Errorf("status code %d", resp.StatusCode)
 	}
 
 	_, err = io.ReadAll(resp.Body)
-
-	ttlb = timeSince(start)
 	resp.Body.Close()
 
-	return ttfb, ttlb, nil
+	ttlb = timeSince(start)
+
+	return ttlb, nil
+}
+
+type TimedRoundTripper struct {
+	defaultTripper http.RoundTripper
+	recordTime     func(time.Duration)
+}
+
+func (t *TimedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+	resp, err := t.defaultTripper.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+	if resp.StatusCode >= http.StatusOK || resp.StatusCode < http.StatusMultipleChoices {
+		t.recordTime(time.Since(start))
+	}
+	return resp, nil
 }

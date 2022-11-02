@@ -48,11 +48,11 @@ func TestArrayFlag(t *testing.T) {
 			value string
 			want  *ArrayFlag
 		}{
-			"add element": {
+			"Set foo": {
 				value: "foo",
 				want:  &ArrayFlag{"foo"},
 			},
-			"add another element": {
+			"Set bar": {
 				value: "bar",
 				want:  &ArrayFlag{"foo", "bar"},
 			},

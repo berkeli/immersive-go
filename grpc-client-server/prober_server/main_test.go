@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -78,10 +79,8 @@ func TestDoProbes(t *testing.T) {
 
 		client := pb.NewProberClient(conn)
 
-		callsToTimeSince := 1
 		timeSince = func(t time.Time) time.Duration {
-			callsToTimeSince++
-			return time.Duration(callsToTimeSince) * time.Second
+			return 2 * time.Second
 		}
 
 		resp, err := client.DoProbes(context.Background(), &pb.ProbeRequest{
@@ -92,22 +91,34 @@ func TestDoProbes(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp.TtfbAverageResponseTime)
 		require.NotNil(t, resp.TtlbAverageResponseTime)
-		require.Equal(t, 2*time.Second, resp.TtfbAverageResponseTime.AsDuration())
-		require.Equal(t, 3*time.Second, resp.TtlbAverageResponseTime.AsDuration())
+		require.Greater(t, resp.TtfbAverageResponseTime.AsDuration(), time.Duration(0))
+		require.Equal(t, 2*time.Second, resp.TtlbAverageResponseTime.AsDuration())
 	})
 }
 
 func TestTimedProbe(t *testing.T) {
 	t.Run("must return valid values", func(t *testing.T) {
-		callsToTimeSince := 0
+		ttfbTotal := time.Duration(0)
+		latestTtfb := time.Duration(0)
+
 		timeSince = func(t time.Time) time.Duration {
-			callsToTimeSince++
-			return time.Duration(callsToTimeSince) * time.Second
+			return 3 * time.Second
 		}
-		ttfb, ttlb, err := TimedProbe("https://www.google.com")
+
+		c := &http.Client{
+			Transport: &TimedRoundTripper{
+				defaultTripper: http.DefaultTransport,
+				recordTime: func(t time.Duration) {
+					latestTtfb = 200 * time.Millisecond
+					ttfbTotal += latestTtfb
+				},
+			},
+		}
+		ttlb, err := TimedProbe(c, "https://www.google.com")
 
 		require.NoError(t, err)
-		require.Equal(t, 1*time.Second, ttfb)
-		require.Equal(t, 2*time.Second, ttlb)
+		require.Equal(t, 200*time.Millisecond, latestTtfb)
+		require.Equal(t, 200*time.Millisecond, ttfbTotal)
+		require.Equal(t, 3*time.Second, ttlb)
 	})
 }
