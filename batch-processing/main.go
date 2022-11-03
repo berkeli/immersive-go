@@ -96,7 +96,14 @@ func main() {
 		Aws:                  a,
 	}
 
-	Do(config)
+	// Run the pipeline
+	p := NewPipeline(config, map[string]int{
+		DOWNLOAD: 10,
+		CONVERT:  10,
+		UPLOAD:   10,
+	})
+
+	p.Execute()
 
 	// Log what we did
 	log.Printf("processed: %q to %q\n", *inputFilepath, *outputFilepath)
