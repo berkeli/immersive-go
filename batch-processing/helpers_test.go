@@ -37,11 +37,11 @@ func TestDownloadFileFromUrl(t *testing.T) {
 		},
 		"invalid URL": {
 			Url:         "https://via.placeholder.com/",
-			ExpectedErr: errors.New(fmt.Sprintf("Received status 403 when trying to download image")),
+			ExpectedErr: fmt.Errorf("received status 403 when trying to download image"),
 		},
 		"Not and image": {
 			Url:         "https://google.com/",
-			ExpectedErr: errors.New(fmt.Sprintf("image: unknown format")),
+			ExpectedErr: fmt.Errorf("image: unknown format"),
 		},
 	}
 
@@ -114,7 +114,7 @@ func TestContains(t *testing.T) {
 
 func SetupSuite(t *testing.T, contents [][]string) (string, func()) {
 	// Create a temporary file
-	tempDir, err := os.MkdirTemp("/", "tests")
+	tempDir, err := os.MkdirTemp("/tmp", "tests")
 	require.NoError(t, err)
 
 	tmpFileName := fmt.Sprintf("test-%d.csv", time.Now().UnixNano())
@@ -170,7 +170,7 @@ func TestOpenCSVFile(t *testing.T) {
 				{"url", "test"},
 				{"https://via.placeholder.com/350x150.gif", "asd"},
 			},
-			ExpectedErr: errors.New("Error reading CSV: record on line 1: wrong number of fields"),
+			ExpectedErr: errors.New("error reading CSV: record on line 1: wrong number of fields"),
 		},
 		"Should only check header row, others will be checked per row basis": {
 			Contents: [][]string{
@@ -191,4 +191,10 @@ func TestOpenCSVFile(t *testing.T) {
 			require.Equal(t, test.ExpectedErr, err)
 		})
 	}
+
+	t.Run("invalid path provided", func(t *testing.T) {
+		_, err := OpenCSVFile("invalid path")
+
+		require.Error(t, err)
+	})
 }

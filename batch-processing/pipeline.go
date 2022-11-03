@@ -65,8 +65,8 @@ func Download(in <-chan *Out, out chan *Out, wg *sync.WaitGroup) {
 
 		//Create an empty file
 		fileName := extractFilename(row.Url)
-		inputPath := fmt.Sprintf("/outputs/%s.%s", fileName, ext)
-		outputPath := fmt.Sprintf("/outputs/%s-converted.%s", fileName, ext)
+		inputPath := fmt.Sprintf("tmp/outputs/%s.%s", fileName, ext)
+		outputPath := fmt.Sprintf("tmp/outputs/%s-converted.%s", fileName, ext)
 
 		file, err := os.Create(inputPath)
 		if err != nil {

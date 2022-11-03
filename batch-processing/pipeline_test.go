@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"errors"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -97,7 +98,7 @@ func TestDownload(t *testing.T) {
 			ExpectedOutput: []*Out{
 				{
 					Url:   "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png",
-					Input: "/outputs/googlelogo_color_272x92dp",
+					Input: "tmp/outputs/googlelogo_color_272x92dp",
 				},
 			},
 		},
@@ -141,10 +142,11 @@ func TestDownload(t *testing.T) {
 			require.Equal(t, len(gotArr), len(test.ExpectedOutput))
 
 			for _, outRow := range gotArr {
+				log.Println(outRow)
 
 				for _, inRow := range test.ExpectedOutput {
 					if outRow.Url == inRow.Url {
-						require.True(t, strings.HasPrefix(outRow.Input, inRow.Input))
+						require.True(t, strings.HasPrefix(outRow.Input, inRow.Input), "%s must have a prefix of %s", outRow.Input, inRow.Input)
 						require.True(t, strings.HasPrefix(outRow.Output, inRow.Output))
 
 						if inRow.Err != nil {
