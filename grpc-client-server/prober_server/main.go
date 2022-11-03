@@ -110,13 +110,16 @@ func TimedProbe(c *http.Client, url string) (ttlb time.Duration, err error) {
 	if err != nil {
 		return nullTime, err
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return ttlb, fmt.Errorf("status code %d", resp.StatusCode)
 	}
 
 	_, err = io.ReadAll(resp.Body)
-	resp.Body.Close()
+	if err != nil {
+		return nullTime, err
+	}
 
 	ttlb = timeSince(start)
 
