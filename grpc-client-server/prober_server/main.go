@@ -23,7 +23,6 @@ var (
 		Name: "latency_gauge",
 		Help: "The latency of the requests to the endpoint",
 	}, []string{"endpoint", "type"})
-	timeSince = time.Since
 )
 
 type ResponseTime struct {
@@ -34,6 +33,7 @@ type ResponseTime struct {
 // server is used to implement prober.ProberServer.
 type Server struct {
 	pb.UnimplementedProberServer
+	timeSince func(time.Time) time.Duration
 }
 
 func (s *Server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeReply, error) {
@@ -44,16 +44,17 @@ func (s *Server) DoProbes(ctx context.Context, in *pb.ProbeRequest) (*pb.ProbeRe
 
 	c := &http.Client{
 		Transport: &TimedRoundTripper{
-			defaultTripper: http.DefaultTransport,
+			underlying: http.DefaultTransport,
 			recordTime: func(t time.Duration) {
 				latestTtfb = t
 				ttfbTotal += t
 			},
+			timeSince: s.timeSince,
 		},
 	}
 
 	for i := 0; i < int(in.GetNumberOfRequests()); i++ {
-		ttlb, err := TimedProbe(c, in.GetEndpoint())
+		ttlb, err := s.timedProbe(c, in.GetEndpoint())
 		if err != nil {
 			log.Printf("could not probe: %v", err)
 			failed++
@@ -88,25 +89,22 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	pb.RegisterProberServer(s, &Server{})
+	pb.RegisterProberServer(s, &Server{
+		timeSince: time.Since,
+	})
 	log.Printf("server listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
-func TimedProbe(c *http.Client, url string) (ttlb time.Duration, err error) {
+func (s *Server) timedProbe(c *http.Client, url string) (ttlb time.Duration, err error) {
 	var start time.Time
 	nullTime := time.Duration(0)
 
-	req, err := http.NewRequest("GET", url, nil)
-
-	if err != nil {
-		return nullTime, err
-	}
 	start = time.Now()
 
-	resp, err := c.Transport.RoundTrip(req)
+	resp, err := c.Get(url)
 	if err != nil {
 		return nullTime, err
 	}
@@ -121,24 +119,25 @@ func TimedProbe(c *http.Client, url string) (ttlb time.Duration, err error) {
 		return nullTime, err
 	}
 
-	ttlb = timeSince(start)
+	ttlb = s.timeSince(start)
 
 	return ttlb, nil
 }
 
 type TimedRoundTripper struct {
-	defaultTripper http.RoundTripper
-	recordTime     func(time.Duration)
+	underlying http.RoundTripper
+	recordTime func(time.Duration)
+	timeSince  func(time.Time) time.Duration
 }
 
 func (t *TimedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	start := time.Now()
-	resp, err := t.defaultTripper.RoundTrip(req)
+	resp, err := t.underlying.RoundTrip(req)
 	if err != nil {
 		return resp, err
 	}
 	if resp.StatusCode >= http.StatusOK || resp.StatusCode < http.StatusMultipleChoices {
-		t.recordTime(time.Since(start))
+		t.recordTime(t.timeSince(start))
 	}
 	return resp, nil
 }

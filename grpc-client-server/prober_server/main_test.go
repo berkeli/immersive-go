@@ -20,7 +20,11 @@ func dialer() func(context.Context, string) (net.Conn, error) {
 
 	server := grpc.NewServer()
 
-	pb.RegisterProberServer(server, &Server{})
+	pb.RegisterProberServer(server, &Server{
+		timeSince: func(time.Time) time.Duration {
+			return 200 * time.Millisecond
+		},
+	})
 
 	go func() {
 		if err := server.Serve(listener); err != nil {
@@ -80,10 +84,6 @@ func TestDoProbes(t *testing.T) {
 
 		client := pb.NewProberClient(conn)
 
-		timeSince = func(t time.Time) time.Duration {
-			return 2 * time.Second
-		}
-
 		resp, err := client.DoProbes(context.Background(), &pb.ProbeRequest{
 			Endpoint:         "https://www.google.com",
 			NumberOfRequests: 1,
@@ -92,34 +92,39 @@ func TestDoProbes(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp.TtfbAverageResponseTime)
 		require.NotNil(t, resp.TtlbAverageResponseTime)
-		require.Greater(t, resp.TtfbAverageResponseTime.AsDuration(), time.Duration(0))
-		require.Equal(t, 2*time.Second, resp.TtlbAverageResponseTime.AsDuration())
+		require.Equal(t, 200*time.Millisecond, resp.TtfbAverageResponseTime.AsDuration())
+		require.Equal(t, 200*time.Millisecond, resp.TtlbAverageResponseTime.AsDuration())
 	})
 }
 
 func TestTimedProbe(t *testing.T) {
 	t.Run("must return valid values", func(t *testing.T) {
+		s := &Server{
+			timeSince: func(time.Time) time.Duration {
+				return 200 * time.Millisecond
+			},
+		}
+
 		ttfbTotal := time.Duration(0)
 		latestTtfb := time.Duration(0)
 
-		timeSince = func(t time.Time) time.Duration {
-			return 3 * time.Second
-		}
-
 		c := &http.Client{
 			Transport: &TimedRoundTripper{
-				defaultTripper: http.DefaultTransport,
+				underlying: http.DefaultTransport,
 				recordTime: func(t time.Duration) {
 					latestTtfb = 200 * time.Millisecond
 					ttfbTotal += latestTtfb
 				},
+				timeSince: func(t time.Time) time.Duration {
+					return 200 * time.Millisecond
+				},
 			},
 		}
-		ttlb, err := TimedProbe(c, "https://www.google.com")
+		ttlb, err := s.timedProbe(c, "https://www.google.com")
 
 		require.NoError(t, err)
 		require.Equal(t, 200*time.Millisecond, latestTtfb)
 		require.Equal(t, 200*time.Millisecond, ttfbTotal)
-		require.Equal(t, 3*time.Second, ttlb)
+		require.Equal(t, 200*time.Millisecond, ttlb)
 	})
 }
