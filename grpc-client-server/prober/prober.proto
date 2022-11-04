@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-option go_package = "github.com/CodeYourFuture/immersive-go-course/grpc-client-server/prober";
+option go_package = "github.com/Berkeli/immersive-go/grpc-client-server/prober";
+
+import "google/protobuf/duration.proto";
 
 package prober;
 
@@ -12,10 +14,14 @@ service Prober {
 // The request message 
 message ProbeRequest {
   string endpoint = 1;
+  int32 numberOfRequests = 2;
 }
 
 // The response message containing the result
+// returns the average response time
 message ProbeReply {
-  float result = 1;
+  google.protobuf.Duration ttfbAverageResponseTime = 1;
+  google.protobuf.Duration ttlbAverageResponseTime = 2;
+  int32 failedRequests = 3;
 }
 
