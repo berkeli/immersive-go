@@ -51,14 +51,20 @@ func TestValidateImage(t *testing.T) {
 	testTable := map[string]struct {
 		url      string
 		expected error
+		width    int
+		height   int
 	}{
 		"Valid jpg image": {
-			url:      "https://www.pakainfo.com/wp-content/uploads/2021/09/image-url-for-testing.jpg",
+			url:      "https://placekitten.com/200/300",
 			expected: nil,
+			width:    200,
+			height:   300,
 		},
 		"Valid png image": {
 			url:      "https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png",
 			expected: nil,
+			width:    544,
+			height:   184,
 		},
 		"Invalid image": {
 			url:      "https://www.google.com/",
@@ -72,8 +78,10 @@ func TestValidateImage(t *testing.T) {
 
 	for name, test := range testTable {
 		t.Run(name, func(t *testing.T) {
-			_, _, err := ValidateImage(test.url)
+			w, h, err := ValidateImage(test.url)
 			require.Equal(t, test.expected, err)
+			require.Equal(t, test.width, w)
+			require.Equal(t, test.height, h)
 		})
 	}
 

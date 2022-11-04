@@ -70,7 +70,7 @@ func ValidateImage(url string) (int, int, error) {
 	}
 
 	if !contains([]string{"jpeg", "png", "gif"}, format) {
-		return 0, 0, fmt.Errorf("Unsupported image format: %s", format)
+		return 0, 0, fmt.Errorf("Unsupported image format: %s, only jpeg, png, gif are supported", format)
 	}
 
 	if im.Width == 0 || im.Height == 0 {
