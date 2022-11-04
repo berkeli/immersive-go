@@ -49,6 +49,7 @@ func TestDoProbes(t *testing.T) {
 				NumberOfRequests: 1,
 			},
 			failedReq: 0,
+			err:       nil,
 		},
 		"error": {
 			req: &pb.ProbeRequest{
@@ -56,6 +57,7 @@ func TestDoProbes(t *testing.T) {
 				NumberOfRequests: 3,
 			},
 			failedReq: 3,
+			err:       nil,
 		},
 	}
 
@@ -69,7 +71,9 @@ func TestDoProbes(t *testing.T) {
 
 			resp, err := client.DoProbes(context.Background(), tc.req)
 
-			if err == nil {
+			require.Equal(t, tc.err, err)
+
+			if tc.err == nil {
 				require.NotNil(t, resp.TtfbAverageResponseTime)
 			}
 

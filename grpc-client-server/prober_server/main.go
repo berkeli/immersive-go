@@ -114,7 +114,7 @@ func (s *Server) timedProbe(c *http.Client, url string) (ttlb time.Duration, err
 		return ttlb, fmt.Errorf("status code %d", resp.StatusCode)
 	}
 
-	_, err = io.ReadAll(resp.Body)
+	_, err = io.Copy(io.Discard, resp.Body)
 	if err != nil {
 		return nullTime, err
 	}
