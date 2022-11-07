@@ -2,6 +2,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -85,4 +89,100 @@ func TestValidateImage(t *testing.T) {
 		})
 	}
 
+	t.Run("test against local server", func(t *testing.T) {
+		fs := http.FileServer(http.Dir("test_assets"))
+
+		svr := httptest.NewServer(fs)
+
+		defer svr.Close()
+
+		testTable := map[string]struct {
+			path   string
+			err    error
+			width  int
+			height int
+		}{
+			"Valid jpg image": {
+				path:   "test.jpg",
+				err:    nil,
+				width:  100,
+				height: 20,
+			},
+			"Valid png image": {
+				path:   "test.png",
+				err:    nil,
+				width:  100,
+				height: 20,
+			},
+			"Valid gif image": {
+				path:   "test.gif",
+				err:    nil,
+				width:  100,
+				height: 20,
+			},
+			"Invalid image": {
+				path: "test.txt",
+				err:  errors.New("Unable to decode image: image: unknown format"),
+			},
+			"Invalid URL": {
+				path: "test",
+				err:  fmt.Errorf("Unable to fetch image: %s/test", svr.URL),
+			},
+		}
+
+		for name, test := range testTable {
+			t.Run(name, func(t *testing.T) {
+				w, h, err := ValidateImage(svr.URL + "/" + test.path)
+				require.Equal(t, test.err, err)
+				require.Equal(t, test.width, w)
+				require.Equal(t, test.height, h)
+			})
+		}
+	})
+
+}
+
+func Test_decodeImage(t *testing.T) {
+	testTable := map[string]struct {
+		path   string
+		err    error
+		width  int
+		height int
+	}{
+		"Valid jpg image": {
+			path:   "test_assets/test.jpg",
+			err:    nil,
+			width:  100,
+			height: 20,
+		},
+		"Valid png image": {
+			path:   "test_assets/test.png",
+			err:    nil,
+			width:  100,
+			height: 20,
+		},
+		"Valid gif image": {
+			path:   "test_assets/test.gif",
+			err:    nil,
+			width:  100,
+			height: 20,
+		},
+		"Invalid image": {
+			path: "test_assets/test.txt",
+			err:  errors.New("image: unknown format"),
+		},
+	}
+
+	for name, test := range testTable {
+		t.Run(name, func(t *testing.T) {
+			file, err := os.Open(test.path)
+
+			require.NoError(t, err)
+
+			w, h, err := decodeImage(file)
+			require.Equal(t, test.err, err)
+			require.Equal(t, test.width, w)
+			require.Equal(t, test.height, h)
+		})
+	}
 }

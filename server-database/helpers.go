@@ -6,6 +6,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -64,9 +65,20 @@ func ValidateImage(url string) (int, int, error) {
 		return 0, 0, fmt.Errorf("Unable to fetch image: %s", url)
 	}
 
-	im, format, err := image.DecodeConfig(resp.Body)
+	width, height, err := decodeImage(resp.Body)
+
 	if err != nil {
-		return 0, 0, fmt.Errorf("Unable to decode image: %s", err.Error())
+		return 0, 0, fmt.Errorf("Unable to decode image: %v", err)
+	}
+
+	return width, height, nil
+}
+
+func decodeImage(body io.Reader) (int, int, error) {
+	im, format, err := image.DecodeConfig(body)
+
+	if err != nil {
+		return 0, 0, err
 	}
 
 	if !contains([]string{"jpeg", "png", "gif"}, format) {
