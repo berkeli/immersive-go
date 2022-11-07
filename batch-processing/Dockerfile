@@ -58,16 +58,15 @@ RUN go build -o /out
 ##
 FROM base as test
 
-ENTRYPOINT [ "go", "test", "-cover", "-v" ]
+ENTRYPOINT [ "go", "test", "-v" ]
 
 ##
 ## DEVELOP
 ##
 FROM base as develop
 
-# COPY .bash_history /root/.bash_history
+COPY .bash_history /root/.bash_history
 ENTRYPOINT [ "/bin/bash" ]
-# go run -race . --input /inputs/large-input.csv --output /outputs/output.csv --output-failed /outputs/failed.csv & sleep 2 && sh profile.sh 
 
 ##
 ## RUN
@@ -75,4 +74,4 @@ ENTRYPOINT [ "/bin/bash" ]
 FROM base as run
 
 WORKDIR /
-ENTRYPOINT /out --input /inputs/large-input.csv --output /outputs/output.csv --output-failed /outputs/failed.csv
+ENTRYPOINT /out --input /inputs/gradient.jpg --output /outputs/gradient_bw.jpg

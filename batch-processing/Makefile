@@ -2,28 +2,23 @@ SHELL=/bin/bash
 .PHONY: run test develop
 
 outputs:
-	mkdir -p tmp/outputs
+	mkdir -p outputs
 
 run: outputs
 	docker build --target run -t run .
 	docker run \
-		--mount type=bind,source="$$(echo $$HOME)/.aws",target=/root/.aws \
-		-e AWS_ROLE_ARN="arn:aws:iam::297880250375:role/GoCourseLambdaUserReadWriteS3"\
-		-e AWS_REGION=eu-west-2 -e AWS_PROFILE=cyfplus -e S3_BUCKET="batch-processing-berkeli"\
 		--mount type=bind,source="$$(pwd)/outputs",target=/outputs \
 		--rm run
 
 test: outputs
 	docker build --target test -t test .
 	docker run \
-		--rm test \
+		--rm test
 
 develop: outputs
 	docker build --target develop -t develop .
 	docker run -it \
 		--mount type=bind,source="$$(pwd)",target=/app \
-		--mount type=bind,source="$$(echo $$HOME)/.aws",target=/root/.aws \
-		-e AWS_ROLE_ARN="arn:aws:iam::297880250375:role/GoCourseLambdaUserReadWriteS3"\
-		-e AWS_REGION=eu-west-2 -e AWS_PROFILE=cyfplus -e S3_BUCKET="batch-processing-berkeli"\
-		--mount type=bind,source="$$(pwd)/outputs",target=/app/outputs \
+		--mount type=bind,source="/tmp",target=/tmp \
+		--mount type=bind,source="$$(pwd)/outputs",target=/outputs \
 		--rm develop
