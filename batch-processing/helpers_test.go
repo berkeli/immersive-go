@@ -4,6 +4,8 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path"
 	"testing"
@@ -14,39 +16,43 @@ import (
 
 func TestDownloadFileFromUrl(t *testing.T) {
 	type Test struct {
-		Url            string
+		File           string
 		ExpectedErr    error
 		ExpectedFormat string
 	}
 	tests := map[string]Test{
 		"valid PNG": {
-			Url:            "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png",
+			File:           "test.png",
 			ExpectedErr:    nil,
 			ExpectedFormat: "png",
 		},
 		"valid JPEG": {
-			Url:            "https://placekitten.com/408/287",
+			File:           "test.jpg",
 			ExpectedErr:    nil,
 			ExpectedFormat: "jpeg",
 		},
 		"valid GIF": {
-			Url:            "https://via.placeholder.com/350x150.gif",
+			File:           "test.gif",
 			ExpectedErr:    nil,
 			ExpectedFormat: "gif",
 		},
 		"invalid URL": {
-			Url:         "https://via.placeholder.com/",
-			ExpectedErr: fmt.Errorf("received status 403 when trying to download image"),
+			File:        "test",
+			ExpectedErr: fmt.Errorf("received status 404 when trying to download image"),
 		},
 		"Not and image": {
-			Url:         "https://google.com/",
+			File:        "test.txt",
 			ExpectedErr: fmt.Errorf("image: unknown format"),
 		},
 	}
 
+	fs := http.FileServer(http.Dir("/inputs/test_assets"))
+
+	srv := httptest.NewServer(fs)
+
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, format, err := DownloadFileFromUrl(test.Url)
+			_, format, err := DownloadFileFromUrl(srv.URL + "/" + test.File)
 
 			require.Equal(t, test.ExpectedErr, err)
 
