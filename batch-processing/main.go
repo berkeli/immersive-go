@@ -38,9 +38,9 @@ func initAwsClient() (*AWSConfig, error) {
 	S3Client := s3.New(sess, &aws.Config{Credentials: creds})
 
 	return &AWSConfig{
-		s3:       S3Client,
-		region:   awsRegion,
-		s3bucket: s3Bucket,
+		region:    awsRegion,
+		s3bucket:  s3Bucket,
+		PutObject: S3Client.PutObject,
 	}, nil
 }
 
@@ -97,11 +97,7 @@ func main() {
 	}
 
 	// Run the pipeline
-	p := NewPipeline(config, map[string]int{
-		DOWNLOAD: 10,
-		CONVERT:  10,
-		UPLOAD:   10,
-	})
+	p := NewPipeline(config)
 
 	p.Execute()
 

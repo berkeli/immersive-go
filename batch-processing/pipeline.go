@@ -18,15 +18,22 @@ const (
 	DOWNLOAD = "download"
 	CONVERT  = "convert"
 	UPLOAD   = "upload"
+	WRITE    = "write"
 )
 
 var TASKS = []string{DOWNLOAD, CONVERT, UPLOAD}
+
+var (
+	OutputHeader       = []string{"url", "input", "output", "s3url"}
+	FailedOutputHeader = []string{"url", "input", "output", "s3url", "error"}
+)
 
 // Pipeline struct
 type Pipeline struct {
 	config   *Config
 	workers  map[string]int
 	channels map[string]chan *Out
+	uuidGen  func() int64
 }
 
 type Task func(wg *sync.WaitGroup)
@@ -68,7 +75,6 @@ func (p *Pipeline) Download(wg *sync.WaitGroup) {
 	for {
 
 		row, ok = <-p.channels[READ]
-		log.Println(row)
 		if !ok {
 			break
 		}
@@ -84,7 +90,7 @@ func (p *Pipeline) Download(wg *sync.WaitGroup) {
 		}
 
 		//Create an empty file
-		fileName := extractFilename(row.Url)
+		fileName := extractFilename(row.Url, p.uuidGen())
 		inputPath := fmt.Sprintf("/outputs/%s.%s", fileName, ext)
 		outputPath := fmt.Sprintf("/outputs/%s-converted.%s", fileName, ext)
 
@@ -173,9 +179,10 @@ func (p *Pipeline) Upload(wg *sync.WaitGroup) {
 		}
 
 		// Upload to S3
-		key := strings.Replace(row.Output, "/outputs/", "", 1)
+		path := strings.Split(row.Output, "/")
+		key := path[len(path)-1]
 
-		_, err = p.config.Aws.s3.PutObject(&s3.PutObjectInput{
+		_, err = p.config.Aws.PutObject(&s3.PutObjectInput{
 			Bucket: &p.config.Aws.s3bucket,
 			Key:    &key,
 			Body:   file,
@@ -195,9 +202,6 @@ func (p *Pipeline) Upload(wg *sync.WaitGroup) {
 
 func (p *Pipeline) Write(done chan bool) {
 
-	outputHeader := []string{"url", "input", "output", "s3url"}
-	failedOutputHeader := []string{"url", "input", "output", "s3url", "error"}
-
 	f, err := os.Create(p.config.OutputFilepath)
 	if err != nil {
 		log.Fatalf("error creating output file: %v", err)
@@ -205,7 +209,7 @@ func (p *Pipeline) Write(done chan bool) {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
-	w.Write(outputHeader)
+	w.Write(OutputHeader)
 	var failedW *csv.Writer
 
 	// Create csv for failed output if param is set
@@ -217,7 +221,7 @@ func (p *Pipeline) Write(done chan bool) {
 		defer failedF.Close()
 
 		failedW = csv.NewWriter(failedF)
-		failedW.Write(failedOutputHeader)
+		failedW.Write(FailedOutputHeader)
 	}
 
 	for {
@@ -235,7 +239,10 @@ func (p *Pipeline) Write(done chan bool) {
 		w.Write([]string{row.Url, row.Input, row.Output, row.S3url})
 	}
 	w.Flush()
-	failedW.Flush()
+
+	if p.config.FailedOutputFilepath != "" {
+		failedW.Flush()
+	}
 	done <- true
 }
 
@@ -252,17 +259,11 @@ func (p *Pipeline) taskPicker(task string) Task {
 	return nil
 }
 
-func (p *Pipeline) closeChannel(task string) {
-	close(p.channels[task])
-}
-
 func (p *Pipeline) Execute() error {
 
 	start := time.Now()
-	// Create the channels
-	done := make(chan bool)
 
-	// Start CSV writer
+	done := make(chan bool)
 	go p.Write(done)
 
 	// Start the workers
@@ -276,7 +277,7 @@ func (p *Pipeline) Execute() error {
 				go p.taskPicker(task)(&wg)
 			}
 			wg.Wait()
-			p.closeChannel(task)
+			close(p.channels[task])
 			wgTasks.Done()
 		}(task)
 	}
@@ -300,15 +301,20 @@ func (p *Pipeline) Execute() error {
 	return nil
 }
 
-func NewPipeline(config *Config, w map[string]int) *Pipeline {
+func NewPipeline(config *Config) *Pipeline {
 	return &Pipeline{
-		config: config,
+		uuidGen: time.Now().Unix,
+		config:  config,
 		channels: map[string]chan *Out{
 			READ:     make(chan *Out),
 			DOWNLOAD: make(chan *Out),
 			CONVERT:  make(chan *Out),
 			UPLOAD:   make(chan *Out),
 		},
-		workers: w,
+		workers: map[string]int{
+			DOWNLOAD: 10,
+			CONVERT:  1, // Only one worker for convert, more than one will cause issues
+			UPLOAD:   10,
+		},
 	}
 }

@@ -29,7 +29,8 @@ type Out struct {
 }
 
 type AWSConfig struct {
-	s3       *s3.S3
 	region   string
 	s3bucket string
+
+	PutObject func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error)
 }

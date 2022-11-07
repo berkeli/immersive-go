@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"errors"
 )
@@ -65,7 +64,7 @@ func DownloadFileFromUrl(URL string) (io.Reader, string, error) {
 * @param: {string} url - the URL of the image
 * @return: {string} filename - the filename of the image
  */
-func extractFilename(url string) string {
+func extractFilename(url string, id int64) string {
 	urlArr := strings.Split(url, "/")
 
 	fileName := strings.Split(urlArr[len(urlArr)-1], "?")[0]
@@ -75,7 +74,7 @@ func extractFilename(url string) string {
 		fileName = fileName[:i]
 	}
 
-	fileName = fmt.Sprintf("%s-%d", fileName, time.Now().Unix())
+	fileName = fmt.Sprintf("%s-%d", fileName, id)
 
 	return fileName
 }

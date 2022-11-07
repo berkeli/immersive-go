@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strings"
 	"testing"
 	"time"
 
@@ -81,9 +80,9 @@ func TestExtractFileName(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			name := extractFilename(test.Url)
+			name := extractFilename(test.Url, 123123)
 
-			require.Equal(t, test.Expected, strings.Split(name, "-")[0])
+			require.Equal(t, test.Expected+"-123123", name)
 		})
 	}
 }
@@ -114,7 +113,7 @@ func TestContains(t *testing.T) {
 
 func SetupSuite(t *testing.T, contents [][]string) (string, func()) {
 	// Create a temporary file
-	tempDir, err := os.MkdirTemp("/tmp", "tests")
+	tempDir, err := os.MkdirTemp("/outputs", "tests")
 	require.NoError(t, err)
 
 	tmpFileName := fmt.Sprintf("test-%d.csv", time.Now().UnixNano())
