@@ -303,36 +303,58 @@ func TestMyNoteById(t *testing.T) {
 	as.authClient = auth.NewMockClient(&auth.VerifyResult{
 		State: auth.StateAllow,
 	})
-
 	id, password := "abc123", "password"
 	noteId, content, created, modified := "xyz789", "Note content", time.Now(), time.Now()
 
-	rows := mock.NewRows([]string{"id", "owner", "content", "created", "modified"}).
-		AddRow(noteId, id, content, created, modified)
+	t.Run("note belongs to user", func(t *testing.T) {
+		rows := mock.NewRows([]string{"id", "owner", "content", "created", "modified"}).
+			AddRow(noteId, id, content, created, modified)
 
-	mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE id = (.+)$").WillReturnRows(rows)
+		mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE id = (.+)$").WillReturnRows(rows)
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("/1/my/note/%s.json", noteId), strings.NewReader(""))
-	if err != nil {
-		log.Fatal(err)
-	}
-	req.Header.Add("Authorization", util.BasicAuthHeaderValue(id, password))
-	res := httptest.NewRecorder()
-	handler := as.Handler()
-	handler.ServeHTTP(res, req)
+		req, err := http.NewRequest("GET", fmt.Sprintf("/1/my/note/%s.json", noteId), strings.NewReader(""))
+		if err != nil {
+			log.Fatal(err)
+		}
+		req.Header.Add("Authorization", util.BasicAuthHeaderValue(id, password))
+		res := httptest.NewRecorder()
+		handler := as.Handler()
+		handler.ServeHTTP(res, req)
 
-	if res.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, res.Code)
-	}
+		if res.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, res.Code)
+		}
 
-	data := struct {
-		Note model.Note `json:"note"`
-	}{Note: model.Note{Id: noteId, Owner: id, Content: content, Created: created, Modified: modified, Tags: []string{}}}
-	assertJSON(res.Body.Bytes(), data, t)
+		data := struct {
+			Note model.Note `json:"note"`
+		}{Note: model.Note{Id: noteId, Owner: id, Content: content, Created: created, Modified: modified, Tags: []string{}}}
+		assertJSON(res.Body.Bytes(), data, t)
 
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("unfulfilled expectations: %s", err)
-	}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("unfulfilled expectations: %s", err)
+		}
+	})
+
+	t.Run("note belongs to different user", func(t *testing.T) {
+		rows := mock.NewRows([]string{"id", "owner", "content", "created", "modified"}).
+			AddRow(noteId, "id", content, created, modified)
+
+		mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE id = (.+)$").WillReturnRows(rows)
+
+		req, err := http.NewRequest("GET", fmt.Sprintf("/1/my/note/%s.json", noteId), strings.NewReader(""))
+		if err != nil {
+			log.Fatal(err)
+		}
+		req.Header.Add("Authorization", util.BasicAuthHeaderValue(id, password))
+		res := httptest.NewRecorder()
+		handler := as.Handler()
+		handler.ServeHTTP(res, req)
+
+		if res.Code != http.StatusForbidden {
+			t.Fatalf("expected status %d, got %d", http.StatusForbidden, res.Code)
+		}
+	})
+
 }
 
 func TestMyNoteByIdWithTags(t *testing.T) {

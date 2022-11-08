@@ -112,8 +112,9 @@ func (as *grpcAuthService) Verify(ctx context.Context, in *pb.VerifyRequest) (*p
 	// Look for this user in the database
 	var row userRow
 	err := as.pool.QueryRow(ctx,
-		"SELECT id, password, status FROM public.user WHERE id = $1",
+		"SELECT id, password, status FROM public.user WHERE id = $1 AND status = $2",
 		in.Id,
+		"active",
 	).Scan(&row.id, &row.password, &row.status)
 	// Error can be no rows or a real error...
 	if err != nil {
