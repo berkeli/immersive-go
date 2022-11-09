@@ -84,7 +84,7 @@ func (as *Service) handleMyNotes(w http.ResponseWriter, r *http.Request) {
 func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// Get the authenticated user from the context -- this will have been written earlier
-	_, ok := authuserctx.FromAuthenticatedContext(ctx)
+	userId, ok := authuserctx.FromAuthenticatedContext(ctx)
 	if !ok {
 		as.config.Log.Printf("api: route handler reached with invalid auth context")
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
@@ -104,6 +104,11 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("api: GetNoteById failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	}
+
+	if note.Owner != userId {
+		fmt.Printf("api: user %v tried to access note %v", userId, id)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 	}
 
 	response := struct {

@@ -98,11 +98,51 @@ There are pros and cons to both solutions, but I decided to go with the 1st appr
 
 After modifying the [api_test.go](api/api_test.go) I got the following test result to fix:
 ```
+api_test.go:354: expected status 401, got 200
 --- FAIL: TestMyNoteById (0.00s)
     --- PASS: TestMyNoteById/note_belongs_to_user (0.00s)
     --- FAIL: TestMyNoteById/note_belongs_to_different_user (0.00s)
 ```
+I have added the following code to [handleMyNoteById](api/api.go) to make tests pass again:
+```
+	if note.Owner != userId {
+		fmt.Printf("api: user %v tried to access note %v", userId, id)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+	}
+```
+#### Bug Number 3
+At this point I took a look at the bug report #1 as I wasn't too sure where to look for clues. Based on this bug report, I decided to refactor [notes_test.go](api/model/notes_test.go) to include a case where tag is at the beginning of a sentence. At the same time, I took this opportunity to turn it into a test table. After adding the test case I could clearly see the bug report in test:
+test case:
+```
+		"tag at the start": {
+			text:     "#tag1 This is an example",
+			expected: []string{"tag1"},
+		},
+```
+test result: 
+```
+    notes_test.go:41: expected [tag1], got [tag1 This is an example]
+--- FAIL: TestTags (0.00s)
+    --- PASS: TestTags/no_tags (0.00s)
+    --- PASS: TestTags/one_tag (0.00s)
+    --- PASS: TestTags/two_tags (0.00s)
+    --- PASS: TestTags/two_tags_with_spaces (0.00s)
+    --- FAIL: TestTags/tag_at_the_start (0.00s)
+```
+To make tests pass again and resolve the bug, I have updated the regex from `#([^#]+)` to `#([a-zA-Z0-9(_)]{1,})`
+After this I checked the 2nd bug report, but this had already been resolved with earlier fix to block users who are not active.
 
+#### Performance improvement (number 4?)
+At this point I just started going through different parts of the application to see if anything will catch my eye. While reviewing [GetNotesForOwner](api/model/notes.go) I noticed that it is querying all notes and then filtering out the notes that are not owned by the ownerId provided. This is an unnecessary filtering happening in memory, and filtering these out with a DB query would be optimal.
+
+Previous query:
+```
+queryRows, err := conn.Query(ctx, "SELECT id, owner, content, created, modified FROM public.note")
+```
+New query:
+```
+queryRows, err := conn.Query(ctx, "SELECT id, owner, content, created, modified FROM public.note WHERE owner = $1", owner)
+```
 
 
 
