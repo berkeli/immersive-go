@@ -201,7 +201,13 @@ Bad Request
 
 I noticed that TestMyNoteById test was getting quite big and there were still a few cases I wanted to add, so decided to do a table test in this case.
 
+After this, I have decided to backfill tests in the hopes that this might surface some bugs:
 
+1. I wrote tests for [notes model](api/model/notes_test.go)
+2. I wrote tests for [utils](util/)
+3. Refactored tests for [auth client](auth/client_test.go) so they are not that slow
+
+These did not reveal any bugs.
 
 
 
