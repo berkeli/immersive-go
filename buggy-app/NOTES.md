@@ -138,12 +138,68 @@ At this point I just started going through different parts of the application to
 Previous query:
 ```
 queryRows, err := conn.Query(ctx, "SELECT id, owner, content, created, modified FROM public.note")
+..........
+if note.Owner == owner {
+    note.Tags = extractTags(note.Content)
+    notes = append(notes, note)
+}
 ```
 New query:
 ```
 queryRows, err := conn.Query(ctx, "SELECT id, owner, content, created, modified FROM public.note WHERE owner = $1", owner)
+..........
+note.Tags = extractTags(note.Content)
+notes = append(notes, note)
 ```
 
+#### Bug number 4
+
+After fixing the performance issue, I decided to check each of the API endpoints to see if there are any bugs. I started with the [GetNoteById](api/api.go) endpoint. Whilst it was working as expected when you provide a valid id, it was misbehaving when you provide an invalid id or no ID at all. It was returning a 500 status code and multiple erros alongside an empty note object:
+```
+❯ curl 127.0.0.1:8090/1/my/note/ \
+        -H 'Authorization: Basic eThod0ZJWHU6YXBwbGU=' -i
+HTTP/1.1 500 Internal Server Error
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Thu, 10 Nov 2022 10:54:02 GMT
+Content-Length: 156
+
+Internal Server Error
+Unauthorized
+{"note":{"id":"","owner":"","content":"","created":"0001-01-01T00:00:00Z","modified":"0001-01-01T00:00:00Z","tags":null}}%          
+```
+
+To fix the bug, I decided to write tests first and after writing 2 tests I got the following test results to work on:
+```
+--- FAIL: TestMyNoteById (0.00s)
+    --- FAIL: TestMyNoteById/Note_doesn't_exist (0.00s)
+        api_test.go:327: expected status 404, got 500
+    --- FAIL: TestMyNoteById/note_ID_not_provided (0.00s)
+        api_test.go:346: expected status 404, got 500
+```
+When checking [handleMyNoteById](api/api.go) I noticed that the function was not terminating the request after it dicovers that the note doesn't exist or if the ID isn't valid, simply adding `return` statements in if clauses fixed the issue. 
+```
+❯ curl 127.0.0.1:8090/1/my/note/12.json \
+        -H 'Authorization: Basic eThod0ZJWHU6YXBwbGU=' -i
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Thu, 10 Nov 2022 11:32:57 GMT
+Content-Length: 10
+
+Not Found
+❯ curl 127.0.0.1:8090/1/my/note/ \
+        -H 'Authorization: Basic eThod0ZJWHU6YXBwbGU=' -i
+HTTP/1.1 400 Bad Request
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Thu, 10 Nov 2022 11:33:04 GMT
+Content-Length: 12
+
+Bad Request
+```
+
+I noticed that TestMyNoteById test was getting quite big and there were still a few cases I wanted to add, so decided to do a table test in this case.
 
 
 

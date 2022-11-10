@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -306,6 +307,38 @@ func TestMyNoteById(t *testing.T) {
 
 		if res.Code != http.StatusUnauthorized {
 			t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, res.Code)
+		}
+	})
+
+	t.Run("Note doesn't exist", func(t *testing.T) {
+		mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE id = (.+)$").WillReturnError(sql.ErrNoRows)
+
+		req, err := http.NewRequest("GET", fmt.Sprintf("/1/my/note/%s.json", noteId), strings.NewReader(""))
+		if err != nil {
+			log.Fatal(err)
+		}
+		req.Header.Add("Authorization", util.BasicAuthHeaderValue(id, password))
+		res := httptest.NewRecorder()
+		handler := as.Handler()
+		handler.ServeHTTP(res, req)
+
+		if res.Code != http.StatusNotFound {
+			t.Fatalf("expected status %d, got %d", http.StatusNotFound, res.Code)
+		}
+	})
+
+	t.Run("note ID not provided", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "/1/my/note/", strings.NewReader(""))
+		if err != nil {
+			log.Fatal(err)
+		}
+		req.Header.Add("Authorization", util.BasicAuthHeaderValue(id, password))
+		res := httptest.NewRecorder()
+		handler := as.Handler()
+		handler.ServeHTTP(res, req)
+
+		if res.Code != http.StatusBadRequest {
+			t.Fatalf("expected status %d, got %d", http.StatusNotFound, res.Code)
 		}
 	})
 

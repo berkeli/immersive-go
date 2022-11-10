@@ -88,27 +88,37 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		as.config.Log.Printf("api: route handler reached with invalid auth context")
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
 	}
 
-	// The URL.Path will be something like /1/my/notes/abc123.json.
+	// The URL.Path will be something like /1/my/note/abc123.json.
 	// path.Base strips everything but "abc123.json". We then Replace out the ".json" to give us
 	// just the ID.
 	id := strings.Replace(path.Base(r.URL.Path), ".json", "", 1)
-	if id == "" {
+	if id == "" || r.URL.Path == "/1/my/note/" || r.URL.Path == "/1/my/note" {
 		fmt.Printf("api: no ID supplied: url path %v\n", r.URL.Path)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
 	}
 
 	// Use the "model" layer to get a list of the owner's notes
 	note, err := model.GetNoteById(ctx, as.pool, id)
+
+	if err != nil && strings.Contains(err.Error(), "no rows in result set") {
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
 	if err != nil {
 		fmt.Printf("api: GetNoteById failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
 
 	if note.Owner != userId {
 		fmt.Printf("api: user %v tried to access note %v", userId, id)
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
 	}
 
 	response := struct {
@@ -122,6 +132,7 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("api: response marshal failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
 
 	// Write it back out!
