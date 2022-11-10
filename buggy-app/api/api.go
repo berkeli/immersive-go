@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -104,7 +105,8 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	// Use the "model" layer to get a list of the owner's notes
 	note, err := model.GetNoteById(ctx, as.pool, id)
 
-	if err != nil && strings.Contains(err.Error(), "no rows in result set") {
+	if err != nil && errors.Is(err, pgx.ErrNoRows) {
+		fmt.Printf("api: GetNoteById failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
