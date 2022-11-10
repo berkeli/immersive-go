@@ -84,7 +84,7 @@ services:
         source: volumes/secrets
         target: /run/secrets
         read_only: true
-    command: go test /app/... -cover -v
+    command: go test /app/... -cover
     environment:
       - POSTGRES_PASSWORD_FILE=/run/secrets/postgres-passwd
     profiles: ["test"]
