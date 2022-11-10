@@ -57,10 +57,9 @@ func TestClientCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	<-time.After(500 * time.Millisecond)
 	client.Close()
 
-	<-time.After(1000 * time.Millisecond)
+	<-time.After(100 * time.Millisecond)
 	cancel()
 
 	wg.Wait()
@@ -71,7 +70,7 @@ func TestClientCreate(t *testing.T) {
 
 func TestClientError(t *testing.T) {
 	opts := append(defaultOpts(), grpc.WithBlock())
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	_, err := newClientWithOpts(ctx, "localhost:8010", opts...)
 	if err == nil {

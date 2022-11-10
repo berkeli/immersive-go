@@ -47,38 +47,11 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func setupSuite(t *testing.T, wg *sync.WaitGroup, ctx context.Context, user *userRow) (*grpc.ClientConn, func(), error) {
+func setupSuite(t *testing.T, DatabaseUrl string, ctx context.Context, user *userRow) (func(), error) {
 	t.Helper()
-	passwd, err := util.ReadPasswd()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	config := Config{
-		Port:        8010,
-		DatabaseUrl: fmt.Sprintf("postgres://postgres:%s@postgres:5432/app", passwd),
-		Log:         log.Default(),
-	}
-	as := New(config)
-
-	var runErr error
-	go func() {
-		defer wg.Done()
-		runErr = as.Run(ctx)
-	}()
-
-	<-time.After(100 * time.Millisecond)
-
-	conn, err := grpc.Dial("localhost:8010", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, nil, err
-	}
-	if runErr != nil {
-		return nil, nil, runErr
-	}
 
 	// Connect to DB to get a test user
-	dbConn, err := pgx.Connect(ctx, config.DatabaseUrl)
+	dbConn, err := pgx.Connect(ctx, DatabaseUrl)
 	if err != nil {
 		t.Fatalf("test failed to connect: %v", err)
 	}
@@ -94,10 +67,10 @@ func setupSuite(t *testing.T, wg *sync.WaitGroup, ctx context.Context, user *use
 	}
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return conn, func() {
+	return func() {
 
 		// Delete test user
 		if user != nil {
@@ -112,7 +85,6 @@ func setupSuite(t *testing.T, wg *sync.WaitGroup, ctx context.Context, user *use
 			t.Fatalf("test failed to delete: %v", err)
 		}
 		dbConn.Close(ctx)
-		conn.Close()
 	}, nil
 }
 
@@ -155,14 +127,43 @@ func TestVerify(t *testing.T) {
 			wantState:       pb.State_DENY,
 		},
 	}
+	wg := &sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	passwd, err := util.ReadPasswd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config := Config{
+		Port:        8010,
+		DatabaseUrl: fmt.Sprintf("postgres://postgres:%s@postgres:5432/app", passwd),
+		Log:         log.Default(),
+	}
+	as := New(config)
+
+	var runErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runErr = as.Run(ctx)
+	}()
+
+	<-time.After(100 * time.Millisecond)
+
+	conn, err := grpc.Dial("localhost:8010", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+	defer conn.Close()
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			wg := &sync.WaitGroup{}
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			wg.Add(1)
-			conn, teardown, err := setupSuite(t, wg, ctx, tc.user)
+
+			teardown, err := setupSuite(t, config.DatabaseUrl, ctx, tc.user)
 
 			defer teardown()
 
