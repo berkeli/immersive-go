@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ory/dockertest/v3"
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,7 @@ var TestTable = map[string]struct {
 func TestServer(t *testing.T) {
 
 	pool, err := dockertest.NewPool("")
+	pool.MaxWait = 20 * time.Second
 	require.NoError(t, err, "could not connect to Docker")
 
 	resource, err := pool.Run("docker-cloud", "latest", []string{})

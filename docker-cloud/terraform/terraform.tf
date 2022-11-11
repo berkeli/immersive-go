@@ -3,7 +3,7 @@ provider "aws" {
   default_tags {
     tags = {
       Environment = "dev"
-      Projet      = "docker-cloud"
+      Project     = "docker-cloud"
       terraform   = "true"
     }
   }
