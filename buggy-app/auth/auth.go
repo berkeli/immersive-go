@@ -6,6 +6,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 
 	pb "github.com/CodeYourFuture/immersive-go-course/buggy-app/auth/service"
@@ -46,11 +48,14 @@ func New(config Config) *Service {
 //		log.Fatal(err)
 //	}
 func (as *Service) Run(ctx context.Context) error {
+	// start prometheus metrics server if not testing
+	if !strings.HasSuffix(os.Args[0], ".test") {
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			http.ListenAndServe(":2112", nil)
+		}()
+	}
 	// Connect to the database via a "pool" of connections, allowing concurrency
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		http.ListenAndServe(":2112", nil)
-	}()
 	pool, err := pgxpool.New(ctx, as.config.DatabaseUrl)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)

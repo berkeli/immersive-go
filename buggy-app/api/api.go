@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -153,10 +154,13 @@ func (as *Service) Handler() http.Handler {
 }
 
 func (as *Service) Run(ctx context.Context) error {
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		http.ListenAndServe(":2112", nil)
-	}()
+	// start prometheus metrics if not testing
+	if !strings.HasSuffix(os.Args[0], ".test") {
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			http.ListenAndServe(":2112", nil)
+		}()
+	}
 	listen := fmt.Sprintf(":%d", as.config.Port)
 
 	// Connect to the database via a "pool" of connections, allowing concurrency
