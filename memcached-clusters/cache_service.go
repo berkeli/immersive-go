@@ -32,6 +32,6 @@ func (c *CacheService) Set(key, value string) error {
 }
 
 func NewCacheService(port string) *CacheService {
-	host := fmt.Sprintf("localost:%s", port)
+	host := fmt.Sprintf("localhost:%s", port)
 	return &CacheService{client: memcache.New(host)}
 }

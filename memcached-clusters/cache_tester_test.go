@@ -47,7 +47,11 @@ func TestMain(t *testing.T) {
 			}},
 		}
 
-		require.Equal(t, checkIfSharded(router, nodes), SHARDED)
+		got, err := checkIfSharded(router, nodes)
+
+		require.NoError(t, err)
+
+		require.Equal(t, SHARDED, got)
 	})
 
 	t.Run("Test replicated", func(t *testing.T) {
@@ -62,7 +66,11 @@ func TestMain(t *testing.T) {
 			}},
 		}
 
-		require.Equal(t, checkIfSharded(router, nodes), REPLICATED)
+		got, err := checkIfSharded(router, nodes)
+
+		require.NoError(t, err)
+
+		require.Equal(t, got, REPLICATED)
 
 	})
 }

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"strings"
+
+	"github.com/bradfitz/gomemcache/memcache"
 )
 
 var (
@@ -39,18 +43,31 @@ func main() {
 		memcacheds[port] = NewCacheService(port)
 	}
 
-	log.Println(checkIfSharded(mcrouter, memcacheds))
+	clusterType, err := checkIfSharded(mcrouter, memcacheds)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println(clusterType)
 }
 
-func checkIfSharded(router ICacheService, nodes map[string]ICacheService) string {
-	router.Set("foo", "bar")
+func checkIfSharded(router ICacheService, nodes map[string]ICacheService) (string, error) {
+	err := router.Set("foo", "bar")
 
-	for _, node := range nodes {
+	if err != nil {
+		return "", fmt.Errorf("problem with router: %v", err)
+	}
+
+	for port, node := range nodes {
 		val, err := node.Get("foo")
-		if err != nil || val != "bar" {
-			return SHARDED
+		if (err != nil && errors.Is(err, memcache.ErrCacheMiss)) || (err == nil && val != "bar") {
+			return SHARDED, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("problem with node %s: %v", port, err)
 		}
 	}
 
-	return REPLICATED
+	return REPLICATED, nil
 }
