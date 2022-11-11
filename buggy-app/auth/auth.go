@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 
 	pb "github.com/CodeYourFuture/immersive-go-course/buggy-app/auth/service"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 )
@@ -45,6 +47,10 @@ func New(config Config) *Service {
 //	}
 func (as *Service) Run(ctx context.Context) error {
 	// Connect to the database via a "pool" of connections, allowing concurrency
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":2112", nil)
+	}()
 	pool, err := pgxpool.New(ctx, as.config.DatabaseUrl)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)

@@ -74,6 +74,21 @@ services:
       - POSTGRES_PASSWORD_FILE=/run/secrets/postgres-passwd
     command: /out/api
 
+  prometheus:
+    image: prom/prometheus
+    depends_on:
+      - auth
+      - api
+    ports:
+      - "9090:9090"
+    volumes:
+      - type: bind
+        source: volumes/prometheus
+        target: /etc/prometheus
+      - type: bind
+        source: prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+  
   test:
     build: .
     depends_on:
