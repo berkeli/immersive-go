@@ -45,6 +45,7 @@ services:
     build: .
     ports:
       - "127.0.0.1:8080:80"
+      - "127.0.0.1:2113:2112"
     depends_on:
       - postgres
     volumes:
@@ -61,6 +62,7 @@ services:
     build: .
     ports:
       - "127.0.0.1:8090:80"
+      - "127.0.0.1:2112:2112"
     depends_on:
       - postgres
       - auth
@@ -72,6 +74,10 @@ services:
         read_only: true
     environment:
       - POSTGRES_PASSWORD_FILE=/run/secrets/postgres-passwd
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     command: /out/api
 
   prometheus:

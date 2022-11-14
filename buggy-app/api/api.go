@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
+	_ "net/http/pprof"
+
 	"path"
 	"strings"
 	"sync"
@@ -17,7 +18,6 @@ import (
 	"github.com/CodeYourFuture/immersive-go-course/buggy-app/util/authuserctx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	httplogger "github.com/gleicon/go-httplogger"
 )
@@ -154,13 +154,8 @@ func (as *Service) Handler() http.Handler {
 }
 
 func (as *Service) Run(ctx context.Context) error {
-	// start prometheus metrics if not testing
-	if !strings.HasSuffix(os.Args[0], ".test") {
-		go func() {
-			http.Handle("/metrics", promhttp.Handler())
-			http.ListenAndServe(":2112", nil)
-		}()
-	}
+	util.Monitor()
+
 	listen := fmt.Sprintf(":%d", as.config.Port)
 
 	// Connect to the database via a "pool" of connections, allowing concurrency
@@ -200,4 +195,12 @@ func (as *Service) Run(ctx context.Context) error {
 
 	wg.Wait()
 	return runErr
+}
+
+func InitMonitoring(s string) {
+	panic("unimplemented")
+}
+
+func Monitor(s string) {
+	panic("unimplemented")
 }

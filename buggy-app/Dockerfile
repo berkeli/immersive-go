@@ -19,7 +19,7 @@ COPY cmd ./cmd
 COPY migrations ./migrations
 COPY util ./util
 
-RUN mkdir -p /out
+RUN mkdir -p /out/
 RUN go build -o /out ./...
 
 COPY bin /bin
