@@ -9,11 +9,15 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"errors"
+
+	"github.com/cenkalti/backoff/v4"
 )
 
 const (
@@ -53,10 +57,47 @@ func DownloadFileFromUrl(URL string) (io.Reader, string, error) {
 	SupportedImageTypes := []string{"jpeg", "png", "gif"}
 
 	if !contains(SupportedImageTypes, format) {
-		return nil, "", fmt.Errorf("unsupported image type, only the following are supported: %s", SupportedImageTypes)
+		return nil, "", backoff.Permanent(fmt.Errorf("unsupported image type, only the following are supported: %s", SupportedImageTypes))
 	}
 
 	return &buf, format, nil
+}
+
+/**
+* Download the image from the URL with exponential backoff
+* @param: {string} URL - the URL of the image to download
+* @return: {io.Reader} body - the body of the image
+* @return: {string} ext - the file extension (format) of the image
+* @return: {error} err - any error that occurred
+ */
+func DownloadWithBackoff(url string, maxRetries uint64) (io.Reader, string, error) {
+	var body io.Reader
+	var format string
+	var err error
+
+	operation := func() error {
+		body, format, err = DownloadFileFromUrl(url)
+
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	notify := func(err error, t time.Duration) {
+		log.Printf("Error downloading file from %s: %s. Retrying in %s)\n", url, err, t)
+	}
+
+	b := backoff.WithMaxRetries(backoff.NewExponentialBackOff(), maxRetries)
+
+	err = backoff.RetryNotify(operation, b, notify)
+
+	if err != nil {
+		return nil, "", err
+	}
+
+	return body, format, nil
 }
 
 /**

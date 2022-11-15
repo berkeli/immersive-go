@@ -30,10 +30,11 @@ var (
 
 // Pipeline struct
 type Pipeline struct {
-	config   *Config
-	workers  map[string]int
-	channels map[string]chan *Out
-	uuidGen  func() int64
+	config     *Config
+	workers    map[string]int
+	channels   map[string]chan *Out
+	uuidGen    func() int64
+	maxRetries uint64
 }
 
 type Task func(wg *sync.WaitGroup)
@@ -82,7 +83,7 @@ func (p *Pipeline) Download(wg *sync.WaitGroup) {
 			p.channels[DOWNLOAD] <- row
 			continue
 		}
-		body, ext, err = DownloadFileFromUrl(row.Url)
+		body, ext, err = DownloadWithBackoff(row.Url, p.maxRetries)
 		if err != nil {
 			row.Err = err
 			p.channels[DOWNLOAD] <- row
@@ -120,7 +121,6 @@ func (p *Pipeline) Download(wg *sync.WaitGroup) {
 			Output: outputPath,
 		}
 	}
-	fmt.Println("Download done")
 }
 
 func (p *Pipeline) Convert(wg *sync.WaitGroup) {
@@ -305,8 +305,9 @@ func (p *Pipeline) Execute() error {
 
 func NewPipeline(config *Config) *Pipeline {
 	return &Pipeline{
-		uuidGen: time.Now().Unix,
-		config:  config,
+		uuidGen:    time.Now().Unix,
+		config:     config,
+		maxRetries: 3,
 		channels: map[string]chan *Out{
 			READ:     make(chan *Out),
 			DOWNLOAD: make(chan *Out),
