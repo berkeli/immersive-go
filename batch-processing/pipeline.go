@@ -24,8 +24,8 @@ const (
 var TASKS = []string{DOWNLOAD, CONVERT, UPLOAD}
 
 var (
-	OutputHeader       = []string{"url", "input", "output", "s3url"}
-	FailedOutputHeader = []string{"url", "input", "output", "s3url", "error"}
+	OutputHeader       = []string{"url", "input", "output", "s3url", "error"}
+	FailedOutputHeader = []string{"url"}
 )
 
 // Pipeline struct
@@ -230,18 +230,20 @@ func (p *Pipeline) Write(done chan bool) {
 		if !ok {
 			break
 		}
-
-		if row.Err != nil && p.config.FailedOutputFilepath != "" {
-			failedW.Write([]string{row.Url, row.Input, row.Output, row.S3url, row.Err.Error()})
-			continue
+		rowErr := ""
+		if row.Err != nil {
+			if p.config.FailedOutputFilepath != "" {
+				failedW.Write([]string{row.Url})
+			}
+			rowErr = row.Err.Error()
 		}
 
-		w.Write([]string{row.Url, row.Input, row.Output, row.S3url})
+		w.Write([]string{row.Url, row.Input, row.Output, row.S3url, rowErr})
 	}
-	w.Flush()
+	defer w.Flush()
 
 	if p.config.FailedOutputFilepath != "" {
-		failedW.Flush()
+		defer failedW.Flush()
 	}
 	done <- true
 }

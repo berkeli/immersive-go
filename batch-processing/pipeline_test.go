@@ -621,7 +621,7 @@ func TestPipeline_Write(t *testing.T) {
 			},
 			ExpectedCSV: [][]string{
 				OutputHeader,
-				{"https://some-url.com/1.jpg", "/outputs/1.jpg", "/outputs/1-converted.jpg", "https://some-bucket.s3.amazonaws.com/1-converted.jpg"},
+				{"https://some-url.com/1.jpg", "/outputs/1.jpg", "/outputs/1-converted.jpg", "https://some-bucket.s3.amazonaws.com/1-converted.jpg", ""},
 			},
 		},
 		"valid output, with failed": {
@@ -643,11 +643,12 @@ func TestPipeline_Write(t *testing.T) {
 			},
 			ExpectedCSV: [][]string{
 				OutputHeader,
-				{"https://some-url.com/1.jpg", "/outputs/1.jpg", "/outputs/1-converted.jpg", "https://some-bucket.s3.amazonaws.com/1-converted.jpg"},
+				{"https://some-url.com/1.jpg", "/outputs/1.jpg", "/outputs/1-converted.jpg", "https://some-bucket.s3.amazonaws.com/1-converted.jpg", ""},
+				{"https://some-url.com/2.jpg", "/outputs/2.jpg", "/outputs/2-converted.jpg", "", "some error"},
 			},
 			ExpectedFailedCSV: [][]string{
 				FailedOutputHeader,
-				{"https://some-url.com/2.jpg", "/outputs/2.jpg", "/outputs/2-converted.jpg", "", "some error"},
+				{"https://some-url.com/2.jpg"},
 			},
 		},
 	}
@@ -775,15 +776,17 @@ func TestPipeline_Execute(t *testing.T) {
 
 		wantOutputCSV := [][]string{
 			OutputHeader,
-			{srv.URL + "/test.jpg", "/outputs/test-1.jpeg", "/outputs/test-1-converted.jpeg", "https://some-bucket.s3.amazonaws.com/test-1-converted.jpeg"},
-			{srv.URL + "/test.gif", "/outputs/test-1.gif", "/outputs/test-1-converted.gif", "https://some-bucket.s3.amazonaws.com/test-1-converted.gif"},
-			{srv.URL + "/test.png", "/outputs/test-1.png", "/outputs/test-1-converted.png", "https://some-bucket.s3.amazonaws.com/test-1-converted.png"},
+			{srv.URL + "/test.jpg", "/outputs/test-1.jpeg", "/outputs/test-1-converted.jpeg", "https://some-bucket.s3.amazonaws.com/test-1-converted.jpeg", ""},
+			{srv.URL + "/test.gif", "/outputs/test-1.gif", "/outputs/test-1-converted.gif", "https://some-bucket.s3.amazonaws.com/test-1-converted.gif", ""},
+			{srv.URL + "/test.png", "/outputs/test-1.png", "/outputs/test-1-converted.png", "https://some-bucket.s3.amazonaws.com/test-1-converted.png", ""},
+			{srv.URL + "/test.txt", "", "", "", "image: unknown format"},
+			{srv.URL + "/not-found", "", "", "", "received status 404 when trying to download image"},
 		}
 
 		wantFailedOutputCSV := [][]string{
 			FailedOutputHeader,
-			{srv.URL + "/test.txt", "", "", "", "image: unknown format"},
-			{srv.URL + "/not-found", "", "", "", "received status 404 when trying to download image"},
+			{srv.URL + "/test.txt"},
+			{srv.URL + "/not-found"},
 		}
 
 		p, teardown := setupSuite(t, inputCSV)
