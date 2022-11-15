@@ -17,6 +17,7 @@ import (
 
 	"errors"
 
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/cenkalti/backoff/v4"
 )
 
@@ -166,4 +167,29 @@ func OpenCSVFile(filename string) (*csv.Reader, error) {
 	}
 
 	return csvReader, nil
+}
+
+func UploadToS3WithBackoff(file *os.File, key string, aws *AWSConfig, maxRetries uint64) error {
+	operation := func() error {
+		_, err := aws.PutObject(&s3.PutObjectInput{
+			Bucket: &aws.s3bucket,
+			Key:    &key,
+			Body:   file,
+		})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	notify := func(err error, t time.Duration) {
+		log.Printf("Error uploading file to S3: %s. Retrying in %s)\n", err, t)
+	}
+
+	b := backoff.WithMaxRetries(backoff.NewExponentialBackOff(), maxRetries)
+
+	err := backoff.RetryNotify(operation, b, notify)
+
+	return err
 }

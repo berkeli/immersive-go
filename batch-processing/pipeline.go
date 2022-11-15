@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 const (
@@ -182,11 +180,7 @@ func (p *Pipeline) Upload(wg *sync.WaitGroup) {
 		path := strings.Split(row.Output, "/")
 		key := path[len(path)-1]
 
-		_, err = p.config.Aws.PutObject(&s3.PutObjectInput{
-			Bucket: &p.config.Aws.s3bucket,
-			Key:    &key,
-			Body:   file,
-		})
+		err = UploadToS3WithBackoff(file, key, p.config.Aws, p.maxRetries)
 
 		if err != nil {
 			row.Err = err
