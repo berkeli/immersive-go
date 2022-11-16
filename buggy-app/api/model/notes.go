@@ -32,7 +32,7 @@ func GetNotesForOwner(ctx context.Context, conn dbConn, owner string, page, per_
 		return nil, 0, errors.New("model: owner not supplied")
 	}
 
-	queryRows, err := conn.Query(ctx, "SELECT id, owner, content, created, modified FROM public.note WHERE owner = $1 SORT BY created DESC LIMIT $2 OFFSET $3", owner, per_page, page*per_page)
+	queryRows, err := conn.Query(ctx, "SELECT id, owner, content, created, modified FROM public.note WHERE owner = $1 ORDER BY created DESC LIMIT $2 OFFSET $3", owner, per_page, page*per_page)
 	if err != nil {
 		return nil, 0, fmt.Errorf("model: could not query notes: %w", err)
 	}
