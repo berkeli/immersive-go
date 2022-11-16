@@ -110,8 +110,8 @@ func TestPipeline_Download(t *testing.T) {
 			ExpectedOutput: []*Out{
 				{
 					Url:    srv.URL + "/test.png",
-					Input:  "/outputs/test-1.png",
-					Output: "/outputs/test-1-converted.png",
+					Input:  "/outputs/e5765cefe1b8d33fc78315437516439d.png",
+					Output: "/outputs/e5765cefe1b8d33fc78315437516439d-converted.png",
 				},
 			},
 		},
@@ -124,8 +124,8 @@ func TestPipeline_Download(t *testing.T) {
 			ExpectedOutput: []*Out{
 				{
 					Url:    srv.URL + "/test.jpg",
-					Input:  "/outputs/test-1.jpeg",
-					Output: "/outputs/test-1-converted.jpeg",
+					Input:  "/outputs/85e42ea4f380785dd6ae5c6361399d87.jpeg",
+					Output: "/outputs/85e42ea4f380785dd6ae5c6361399d87-converted.jpeg",
 				},
 			},
 		},
@@ -138,8 +138,8 @@ func TestPipeline_Download(t *testing.T) {
 			ExpectedOutput: []*Out{
 				{
 					Url:    srv.URL + "/test.gif",
-					Input:  "/outputs/test-1.gif",
-					Output: "/outputs/test-1-converted.gif",
+					Input:  "/outputs/d5c423921f7654ad178b167897564b13.gif",
+					Output: "/outputs/d5c423921f7654ad178b167897564b13-converted.gif",
 				},
 			},
 		},
@@ -178,7 +178,7 @@ func TestPipeline_Download(t *testing.T) {
 			ExpectedOutput: []*Out{
 				{
 					Url: "http://notavalidurl:8080/test.png",
-					Err: errors.New("no such host"),
+					Err: invalidHostErr(t, "http://notavalidurl:8080/test.png"),
 				},
 			},
 		},
@@ -196,16 +196,36 @@ func TestPipeline_Download(t *testing.T) {
 				},
 			},
 		},
+		"duplicates": {
+			In: []*Out{
+				{Url: srv.URL + "/test.png"},
+				{Url: srv.URL + "/test.png"},
+			},
+			ExpectedOutput: []*Out{
+				{
+					Url:    srv.URL + "/test.png",
+					Input:  "/outputs/e5765cefe1b8d33fc78315437516439d.png",
+					Output: "/outputs/e5765cefe1b8d33fc78315437516439d-converted.png",
+				},
+				{
+					Url: srv.URL + "/test.png",
+					Err: ErrDuplicateURL,
+				},
+			},
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 
-			p := NewPipeline(&Config{})
-
-			p.uuidGen = func() int64 {
-				return 1
-			}
+			p := NewPipeline(&Config{
+				Aws: &AWSConfig{
+					GetObject: func(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+						return &s3.GetObjectOutput{}, fmt.Errorf("404 not found")
+					},
+				},
+			})
+			p.maxRetries = 1
 
 			p.channels[READ] = make(chan *Out, len(test.In))
 			p.channels[DOWNLOAD] = make(chan *Out, len(test.In))
@@ -229,23 +249,12 @@ func TestPipeline_Download(t *testing.T) {
 			require.Equal(t, len(gotArr), len(test.ExpectedOutput))
 
 			for _, downloadRow := range gotArr {
-				for _, expRow := range test.ExpectedOutput {
-					if downloadRow.Url == expRow.Url {
-						require.Equal(t, expRow.Input, downloadRow.Input)
-						require.Equal(t, expRow.Output, downloadRow.Output)
-
-						if expRow.Err != nil {
-							require.ErrorContains(t, downloadRow.Err, expRow.Err.Error())
-							require.Equal(t, downloadRow.Input, "")
-							require.Equal(t, downloadRow.Output, "")
-						}
-
-						if downloadRow.Err == nil {
-							verifyFile(t, downloadRow.Input)
-						}
-					}
+				if downloadRow.Err == nil {
+					verifyFile(t, downloadRow.Input)
 				}
 			}
+
+			require.ElementsMatch(t, gotArr, test.ExpectedOutput)
 
 			t.Cleanup(func() {
 				for _, outRow := range gotArr {
@@ -442,6 +451,8 @@ func TestPipeline_Upload(t *testing.T) {
 		},
 	})
 
+	p.maxRetries = 1
+
 	tests := map[string]struct {
 		In           []*Out
 		ExpectedCall *s3.PutObjectInput
@@ -549,6 +560,8 @@ func TestPipeline_Upload(t *testing.T) {
 			},
 		})
 
+		p.maxRetries = 1
+
 		p.channels[CONVERT] = make(chan *Out, 1)
 		p.channels[UPLOAD] = make(chan *Out, 1)
 
@@ -610,7 +623,7 @@ func TestPipeline_Write(t *testing.T) {
 		ExpectedFailedCSV    [][]string
 	}{
 		"valid output, no failed": {
-			OutputFilepath: "test.csv",
+			OutputFilepath: "test1.csv",
 			In: []*Out{
 				{
 					Url:    "https://some-url.com/1.jpg",
@@ -625,7 +638,7 @@ func TestPipeline_Write(t *testing.T) {
 			},
 		},
 		"valid output, with failed": {
-			OutputFilepath:       "test.csv",
+			OutputFilepath:       "test2.csv",
 			FailedOutputFilepath: "failed.csv",
 			In: []*Out{
 				{
@@ -672,25 +685,11 @@ func TestPipeline_Write(t *testing.T) {
 			<-done
 
 			if test.OutputFilepath != "" {
-				f, err := os.Open(p.config.OutputFilepath)
-				require.NoError(t, err)
-
-				r := csv.NewReader(f)
-				content, err := r.ReadAll()
-				require.NoError(t, err)
-
-				require.ElementsMatch(t, test.ExpectedCSV, content)
+				assertCSVOutputFile(t, p.config.OutputFilepath, test.ExpectedCSV)
 			}
 
 			if test.FailedOutputFilepath != "" {
-				f, err := os.Open(p.config.FailedOutputFilepath)
-				require.NoError(t, err)
-
-				r := csv.NewReader(f)
-				content, err := r.ReadAll()
-				require.NoError(t, err)
-
-				require.ElementsMatch(t, test.ExpectedFailedCSV, content)
+				assertCSVOutputFile(t, p.config.FailedOutputFilepath, test.ExpectedFailedCSV)
 			}
 		})
 	}
@@ -729,15 +728,16 @@ func TestPipeline_Execute(t *testing.T) {
 				PutObject: func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
 					return &s3.PutObjectOutput{}, nil
 				},
+				GetObject: func(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+					return &s3.GetObjectOutput{}, fmt.Errorf("404 not found")
+				},
 			},
 		})
 
+		p.maxRetries = 1
+
 		p.config.OutputFilepath = path.Join(tempDir, "test.csv")
 		p.config.FailedOutputFilepath = path.Join(tempDir, "failed.csv")
-
-		p.uuidGen = func() int64 {
-			return 1
-		}
 
 		return p, func(outputFile string) {
 			defer os.RemoveAll(tempDir)
@@ -776,9 +776,9 @@ func TestPipeline_Execute(t *testing.T) {
 
 		wantOutputCSV := [][]string{
 			OutputHeader,
-			{srv.URL + "/test.jpg", "/outputs/test-1.jpeg", "/outputs/test-1-converted.jpeg", "https://some-bucket.s3.amazonaws.com/test-1-converted.jpeg", ""},
-			{srv.URL + "/test.gif", "/outputs/test-1.gif", "/outputs/test-1-converted.gif", "https://some-bucket.s3.amazonaws.com/test-1-converted.gif", ""},
-			{srv.URL + "/test.png", "/outputs/test-1.png", "/outputs/test-1-converted.png", "https://some-bucket.s3.amazonaws.com/test-1-converted.png", ""},
+			{srv.URL + "/test.jpg", "/outputs/85e42ea4f380785dd6ae5c6361399d87.jpeg", "/outputs/85e42ea4f380785dd6ae5c6361399d87-converted.jpeg", "https://some-bucket.s3.amazonaws.com/85e42ea4f380785dd6ae5c6361399d87-converted.jpeg", ""},
+			{srv.URL + "/test.gif", "/outputs/d5c423921f7654ad178b167897564b13.gif", "/outputs/d5c423921f7654ad178b167897564b13-converted.gif", "https://some-bucket.s3.amazonaws.com/d5c423921f7654ad178b167897564b13-converted.gif", ""},
+			{srv.URL + "/test.png", "/outputs/e5765cefe1b8d33fc78315437516439d.png", "/outputs/e5765cefe1b8d33fc78315437516439d-converted.png", "https://some-bucket.s3.amazonaws.com/e5765cefe1b8d33fc78315437516439d-converted.png", ""},
 			{srv.URL + "/test.txt", "", "", "", "image: unknown format"},
 			{srv.URL + "/not-found", "", "", "", "received status 404 when trying to download image"},
 		}
@@ -815,8 +815,16 @@ func assertCSVOutputFile(t *testing.T, path string, want [][]string) {
 
 	r := csv.NewReader(f)
 	content, err := r.ReadAll()
-
 	require.NoError(t, err)
 
 	require.ElementsMatch(t, want, content)
+}
+
+func invalidHostErr(t *testing.T, url string) error {
+	t.Helper()
+	_, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	return nil
 }

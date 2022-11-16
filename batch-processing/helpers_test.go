@@ -52,7 +52,7 @@ func TestDownloadFileFromUrl(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, format, err := DownloadFileFromUrl(srv.URL + "/" + test.File)
+			_, format, _, err := DownloadFileFromUrl(srv.URL + "/" + test.File)
 
 			require.Equal(t, test.ExpectedErr, err)
 
@@ -60,35 +60,6 @@ func TestDownloadFileFromUrl(t *testing.T) {
 				require.Equal(t, format, test.ExpectedFormat)
 			}
 
-		})
-	}
-}
-
-func TestExtractFileName(t *testing.T) {
-	type Test struct {
-		Url      string
-		Expected string
-	}
-	tests := map[string]Test{
-		"valid URL": {
-			Url:      "https://via.placeholder.com/350x150.gif",
-			Expected: "350x150",
-		},
-		"invalid URL": {
-			Url:      "https://via.placeholder.com/",
-			Expected: "",
-		},
-		"with query params": {
-			Url:      "https://via.placeholder.com/350x150.gif?test=1",
-			Expected: "350x150",
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			name := extractFilename(test.Url, 123123)
-
-			require.Equal(t, test.Expected+"-123123", name)
 		})
 	}
 }

@@ -41,6 +41,7 @@ func initAwsClient() (*AWSConfig, error) {
 		region:    awsRegion,
 		s3bucket:  s3Bucket,
 		PutObject: S3Client.PutObject,
+		GetObject: S3Client.GetObject,
 	}, nil
 }
 

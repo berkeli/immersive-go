@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -34,34 +36,40 @@ const (
 * @return: {string} ext - the file extension (format) of the image
 * @return: {error} err - any error that occurred
  */
-func DownloadFileFromUrl(URL string) (io.Reader, string, error) {
+func DownloadFileFromUrl(URL string) (io.Reader, string, [16]byte, error) {
 	response, err := http.Get(URL)
+	hash := [16]byte{}
 	if err != nil {
-		return nil, "", err
+		return nil, "", hash, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, "", fmt.Errorf(CouldNotFetchImage, response.StatusCode)
+		return nil, "", hash, fmt.Errorf(CouldNotFetchImage, response.StatusCode)
 	}
 
 	var buf bytes.Buffer
 
 	tee := io.TeeReader(response.Body, &buf)
 
-	_, format, err := image.Decode(tee)
+	// this reads only part of the file for format etc
+	_, format, err := image.DecodeConfig(tee)
 
 	if err != nil {
-		return nil, "", err
+		return nil, "", hash, err
 	}
+	// copy rest of the file
+	io.Copy(&buf, tee)
+
+	hash = md5.Sum(buf.Bytes())
 
 	SupportedImageTypes := []string{"jpeg", "png", "gif"}
 
 	if !contains(SupportedImageTypes, format) {
-		return nil, "", backoff.Permanent(fmt.Errorf("unsupported image type, only the following are supported: %s", SupportedImageTypes))
+		return nil, "", hash, fmt.Errorf("unsupported image type, only the following are supported: %s", SupportedImageTypes)
 	}
 
-	return &buf, format, nil
+	return &buf, format, hash, nil
 }
 
 /**
@@ -69,15 +77,17 @@ func DownloadFileFromUrl(URL string) (io.Reader, string, error) {
 * @param: {string} URL - the URL of the image to download
 * @return: {io.Reader} body - the body of the image
 * @return: {string} ext - the file extension (format) of the image
+* @return: {string} hash - the md5 hash of the image
 * @return: {error} err - any error that occurred
  */
-func DownloadWithBackoff(url string, maxRetries uint64) (io.Reader, string, error) {
+func DownloadWithBackoff(url string, maxRetries uint64) (io.Reader, string, string, error) {
 	var body io.Reader
 	var format string
+	var hash [16]byte
 	var err error
 
 	operation := func() error {
-		body, format, err = DownloadFileFromUrl(url)
+		body, format, hash, err = DownloadFileFromUrl(url)
 
 		if err != nil {
 			return err
@@ -95,30 +105,10 @@ func DownloadWithBackoff(url string, maxRetries uint64) (io.Reader, string, erro
 	err = backoff.RetryNotify(operation, b, notify)
 
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	return body, format, nil
-}
-
-/**
-* Extract the filename from the URL
-* @param: {string} url - the URL of the image
-* @return: {string} filename - the filename of the image
- */
-func extractFilename(url string, id int64) string {
-	urlArr := strings.Split(url, "/")
-
-	fileName := strings.Split(urlArr[len(urlArr)-1], "?")[0]
-
-	i := strings.LastIndex(fileName, ".")
-	if i != -1 {
-		fileName = fileName[:i]
-	}
-
-	fileName = fmt.Sprintf("%s-%d", fileName, id)
-
-	return fileName
+	return body, format, hex.EncodeToString(hash[:]), nil
 }
 
 /**
@@ -169,10 +159,10 @@ func OpenCSVFile(filename string) (*csv.Reader, error) {
 	return csvReader, nil
 }
 
-func UploadToS3WithBackoff(file *os.File, key string, aws *AWSConfig, maxRetries uint64) error {
+func UploadToS3WithBackoff(file *os.File, key string, a *AWSConfig, maxRetries uint64) error {
 	operation := func() error {
-		_, err := aws.PutObject(&s3.PutObjectInput{
-			Bucket: &aws.s3bucket,
+		_, err := a.PutObject(&s3.PutObjectInput{
+			Bucket: &a.s3bucket,
 			Key:    &key,
 			Body:   file,
 		})

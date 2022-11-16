@@ -33,4 +33,5 @@ type AWSConfig struct {
 	s3bucket string
 
 	PutObject func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error)
+	GetObject func(input *s3.GetObjectInput) (*s3.GetObjectOutput, error)
 }

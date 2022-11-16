@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 const (
@@ -26,13 +29,18 @@ var (
 	FailedOutputHeader = []string{"url"}
 )
 
+var (
+	ErrDuplicateURL    = errors.New("duplicate URL, skipping")
+	ErrImageExistsInS3 = errors.New("image already exists in S3, skipping")
+)
+
 // Pipeline struct
 type Pipeline struct {
 	config     *Config
 	workers    map[string]int
 	channels   map[string]chan *Out
-	uuidGen    func() int64
-	maxRetries uint64
+	maxRetries uint64    // Max number of retries for downloading and uploading an image
+	urlMap     *sync.Map // this will record urls that are already processed so we don't download again.
 }
 
 type Task func(wg *sync.WaitGroup)
@@ -68,8 +76,9 @@ func (p *Pipeline) Download(wg *sync.WaitGroup) {
 		row  *Out
 		ok   bool
 		body io.Reader
-		err  error
+		hash string
 		ext  string
+		err  error
 	)
 	for {
 
@@ -81,17 +90,46 @@ func (p *Pipeline) Download(wg *sync.WaitGroup) {
 			p.channels[DOWNLOAD] <- row
 			continue
 		}
-		body, ext, err = DownloadWithBackoff(row.Url, p.maxRetries)
+
+		// Check if the URL has already been processed
+		// If it has, skip it
+		_, ok := p.urlMap.Load(row.Url)
+		if ok {
+			p.channels[DOWNLOAD] <- &Out{
+				Url: row.Url,
+				Err: ErrDuplicateURL,
+			}
+			continue
+		} else {
+			p.urlMap.Store(row.Url, true)
+		}
+
+		body, ext, hash, err = DownloadWithBackoff(row.Url, p.maxRetries)
+
 		if err != nil {
 			row.Err = err
 			p.channels[DOWNLOAD] <- row
 			continue
 		}
 
+		key := fmt.Sprintf("%s-converted.%s", hash, ext)
+
+		// Check if the image hash is already in the S3 bucket
+		_, err = p.config.Aws.GetObject(&s3.GetObjectInput{
+			Bucket: &p.config.Aws.s3bucket,
+			Key:    &key,
+		})
+
+		if err == nil {
+			row.Err = ErrImageExistsInS3
+			row.S3url = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", p.config.Aws.s3bucket, hash)
+			p.channels[DOWNLOAD] <- row
+			continue
+		}
+
 		//Create an empty file
-		fileName := extractFilename(row.Url, p.uuidGen())
-		inputPath := fmt.Sprintf("/outputs/%s.%s", fileName, ext)
-		outputPath := fmt.Sprintf("/outputs/%s-converted.%s", fileName, ext)
+		inputPath := fmt.Sprintf("/outputs/%s.%s", hash, ext)
+		outputPath := fmt.Sprintf("/outputs/%s", key)
 
 		file, err := os.Create(inputPath)
 		if err != nil {
@@ -203,6 +241,7 @@ func (p *Pipeline) Write(done chan bool) {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
+	defer w.Flush()
 	w.Write(OutputHeader)
 	var failedW *csv.Writer
 
@@ -215,6 +254,7 @@ func (p *Pipeline) Write(done chan bool) {
 		defer failedF.Close()
 
 		failedW = csv.NewWriter(failedF)
+		defer failedW.Flush()
 		failedW.Write(FailedOutputHeader)
 	}
 
@@ -225,19 +265,15 @@ func (p *Pipeline) Write(done chan bool) {
 			break
 		}
 		rowErr := ""
+		// only add to failed output if row has an error, but not a duplicate error or image exists error
 		if row.Err != nil {
-			if p.config.FailedOutputFilepath != "" {
+			if p.config.FailedOutputFilepath != "" && row.Err != ErrDuplicateURL && row.Err != ErrImageExistsInS3 {
 				failedW.Write([]string{row.Url})
 			}
 			rowErr = row.Err.Error()
 		}
 
 		w.Write([]string{row.Url, row.Input, row.Output, row.S3url, rowErr})
-	}
-	defer w.Flush()
-
-	if p.config.FailedOutputFilepath != "" {
-		defer failedW.Flush()
 	}
 	done <- true
 }
@@ -299,9 +335,9 @@ func (p *Pipeline) Execute() error {
 
 func NewPipeline(config *Config) *Pipeline {
 	return &Pipeline{
-		uuidGen:    time.Now().Unix,
 		config:     config,
 		maxRetries: 3,
+		urlMap:     &sync.Map{},
 		channels: map[string]chan *Out{
 			READ:     make(chan *Out),
 			DOWNLOAD: make(chan *Out),
@@ -310,7 +346,7 @@ func NewPipeline(config *Config) *Pipeline {
 		},
 		workers: map[string]int{
 			DOWNLOAD: 10,
-			CONVERT:  1, // Only one worker for convert, more than one will cause issues
+			CONVERT:  3, // this sometimes fails due to C binding issue. In case of failure, reduce to 1
 			UPLOAD:   10,
 		},
 	}
