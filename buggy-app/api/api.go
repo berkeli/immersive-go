@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"strconv"
 
 	"path"
 	"strings"
@@ -42,6 +43,13 @@ type Service struct {
 	pool       DbClient
 }
 
+type EnvelopeNotes struct {
+	Notes   model.Notes `json:"notes"`
+	Page    int         `json:"page"`
+	PerPage int         `json:"per_page"`
+	Total   int         `json:"total"`
+}
+
 func New(config Config) *Service {
 	return &Service{
 		config: config,
@@ -58,17 +66,30 @@ func (as *Service) handleMyNotes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 	}
 
+	page, err := strconv.Atoi(r.Header.Get("page"))
+
+	if err != nil || page < 0 {
+		page = 0
+	}
+
+	per_page, err := strconv.Atoi(r.Header.Get("per_page"))
+
+	if err != nil || per_page > 100 {
+		per_page = 10
+	}
+
 	// Use the "model" layer to get a list of the owner's notes
-	notes, err := model.GetNotesForOwner(ctx, as.pool, owner)
+	notes, total, err := model.GetNotesForOwner(ctx, as.pool, owner, page, per_page)
 	if err != nil {
 		fmt.Printf("api: GetNotesForOwner failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 
-	response := struct {
-		Notes model.Notes `json:"notes"`
-	}{
-		Notes: notes,
+	response := EnvelopeNotes{
+		Notes:   notes,
+		Page:    page,
+		PerPage: per_page,
+		Total:   total,
 	}
 
 	// Convert the []Row into JSON

@@ -63,6 +63,7 @@ func TestGetNotesForOwner(t *testing.T) {
 		rows        *pgxmock.Rows
 		expected    Notes
 		expectedErr string
+		count       int
 	}{
 		"no notes": {
 			owner: "test",
@@ -99,15 +100,27 @@ func TestGetNotesForOwner(t *testing.T) {
 			ctx := context.Background()
 			if test.rows != nil {
 				mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE owner = (.+)$").
-					WithArgs(test.owner).
+					WithArgs(test.owner, 10, 0).
 					WillReturnRows(test.rows)
+
+				if test.expectedErr == "" {
+					mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE owner = (.+)$").
+						WithArgs(test.owner).
+						WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(test.count))
+				}
 			}
 
-			notes, err := GetNotesForOwner(ctx, mock, test.owner)
+			notes, count, err := GetNotesForOwner(ctx, mock, test.owner, 0, 10)
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
 
 			if test.expectedErr != "" {
 				require.ErrorContains(t, err, test.expectedErr)
 			}
+
+			require.Equal(t, test.count, count, "expected count to be %v, got %v", test.count, count)
 
 			require.ElementsMatch(t, test.expected, notes, "expected %v, got %v", test.expected, notes)
 		})
