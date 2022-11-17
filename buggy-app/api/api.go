@@ -19,6 +19,7 @@ import (
 	"github.com/CodeYourFuture/immersive-go-course/buggy-app/util/authuserctx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/time/rate"
 
 	httplogger "github.com/gleicon/go-httplogger"
 )
@@ -41,6 +42,7 @@ type Service struct {
 	config     Config
 	authClient auth.Client
 	pool       DbClient
+	limiter    *rate.Limiter
 }
 
 type EnvelopeNotes struct {
@@ -52,7 +54,19 @@ type EnvelopeNotes struct {
 
 func New(config Config) *Service {
 	return &Service{
-		config: config,
+		config:  config,
+		limiter: rate.NewLimiter(1000, 1000),
+	}
+}
+
+// HTTP rate limiter implementation
+func (as *Service) wrapRateLimit(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !as.limiter.Allow() {
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		}
+		next(w, r)
 	}
 }
 
@@ -165,12 +179,20 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+// HTTP handler for health checks
+func (as *Service) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/plain")
+	w.Write([]byte("OK"))
+}
+
 // Set up routes -- this can be used in tests to set up simple HTTP handling
 // rather than running the whole server.
 func (as *Service) Handler() http.Handler {
 	mux := new(http.ServeMux)
-	mux.HandleFunc("/1/my/note/", as.wrapAuth(as.authClient, as.handleMyNoteById))
-	mux.HandleFunc("/1/my/notes.json", as.wrapAuth(as.authClient, as.handleMyNotes))
+	// healthcheck endpoint
+	mux.HandleFunc("/1/health", as.handleHealth)
+	mux.HandleFunc("/1/my/note/", as.wrapRateLimit(as.wrapAuth(as.authClient, as.handleMyNoteById)))
+	mux.HandleFunc("/1/my/notes.json", as.wrapRateLimit(as.wrapAuth(as.authClient, as.handleMyNotes)))
 	return httplogger.HTTPLogger(mux)
 }
 
@@ -216,12 +238,4 @@ func (as *Service) Run(ctx context.Context) error {
 
 	wg.Wait()
 	return runErr
-}
-
-func InitMonitoring(s string) {
-	panic("unimplemented")
-}
-
-func Monitor(s string) {
-	panic("unimplemented")
 }
