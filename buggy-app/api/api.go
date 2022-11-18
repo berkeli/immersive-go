@@ -226,8 +226,8 @@ func (as *Service) Handler() http.Handler {
 }
 
 func (as *Service) Run(ctx context.Context) error {
-	prometheus.MustRegister(getMyNotesCounter, rateLimiterCounter)
 	if !strings.HasSuffix(os.Args[0], ".test") {
+		prometheus.MustRegister(getMyNotesCounter, rateLimiterCounter)
 		go func() {
 			http.Handle("/metrics", promhttp.Handler())
 			http.ListenAndServe(":2112", nil)
