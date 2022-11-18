@@ -293,7 +293,7 @@ func TestMyNoteById(t *testing.T) {
 			"note does not belong to user": {
 				rows:         mock.NewRows([]string{"id", "owner", "content", "created", "modified"}).AddRow(noteId, "someone-else", content, created, modified),
 				url:          fmt.Sprintf("/1/my/note/%s.json", noteId),
-				expectedCode: http.StatusUnauthorized,
+				expectedCode: http.StatusBadRequest,
 			},
 			"note does not exist": {
 				rows:         mock.NewRows([]string{"id", "owner", "content", "created", "modified"}).RowError(0, pgx.ErrNoRows),
