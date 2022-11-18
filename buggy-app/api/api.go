@@ -2,9 +2,14 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"strconv"
+
 	"path"
 	"strings"
 	"sync"
@@ -15,6 +20,9 @@ import (
 	"github.com/CodeYourFuture/immersive-go-course/buggy-app/util/authuserctx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/time/rate"
 
 	httplogger "github.com/gleicon/go-httplogger"
 )
@@ -25,6 +33,22 @@ type DbClient interface {
 	Query(context.Context, string, ...interface{}) (pgx.Rows, error)
 	Close()
 }
+
+var getMyNotesCounter = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_request_get_my_notes_count", // metric name
+		Help: "Number of get_my_notes request.",
+	},
+	[]string{"status"}, // labels
+)
+
+var rateLimiterCounter = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_request_rate_limiter_count", // metric name
+		Help: "Number of rate_limiter request.",
+	},
+	[]string{"status"}, // labels
+)
 
 type Config struct {
 	Port           int
@@ -37,45 +61,88 @@ type Service struct {
 	config     Config
 	authClient auth.Client
 	pool       DbClient
+	limiter    *rate.Limiter
+}
+
+type EnvelopeNotes struct {
+	Notes   model.Notes `json:"notes"`
+	Page    int         `json:"page"`
+	PerPage int         `json:"per_page"`
+	Total   int         `json:"total"`
 }
 
 func New(config Config) *Service {
 	return &Service{
-		config: config,
+		config:  config,
+		limiter: rate.NewLimiter(20, 20),
+	}
+}
+
+// HTTP rate limiter implementation
+func (as *Service) wrapRateLimit(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !as.limiter.Allow() {
+			rateLimiterCounter.WithLabelValues("reject").Inc()
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		}
+		rateLimiterCounter.WithLabelValues("success").Inc()
+		next(w, r)
 	}
 }
 
 // HTTP handler for getting notes for a particular user
 func (as *Service) handleMyNotes(w http.ResponseWriter, r *http.Request) {
+	var status string
+	defer func() {
+		getMyNotesCounter.WithLabelValues(status).Inc()
+	}()
 	ctx := r.Context()
 	// Get the authenticated user from the context -- this will have been written earlier
 	owner, ok := authuserctx.FromAuthenticatedContext(ctx)
 	if !ok {
+		status = "error"
 		as.config.Log.Printf("api: route handler reached with invalid auth context")
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 	}
 
+	page, err := strconv.Atoi(r.Header.Get("page"))
+
+	if err != nil || page < 0 {
+		page = 0
+	}
+
+	per_page, err := strconv.Atoi(r.Header.Get("per_page"))
+
+	if err != nil || per_page > 100 {
+		per_page = 10
+	}
+
 	// Use the "model" layer to get a list of the owner's notes
-	notes, err := model.GetNotesForOwner(ctx, as.pool, owner)
+	notes, total, err := model.GetNotesForOwner(ctx, as.pool, owner, page, per_page)
 	if err != nil {
+		status = "error"
 		fmt.Printf("api: GetNotesForOwner failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 
-	response := struct {
-		Notes model.Notes `json:"notes"`
-	}{
-		Notes: notes,
+	response := EnvelopeNotes{
+		Notes:   notes,
+		Page:    page,
+		PerPage: per_page,
+		Total:   total,
 	}
 
 	// Convert the []Row into JSON
 	res, err := util.MarshalWithIndent(response, "")
 	if err != nil {
+		status = "error"
 		fmt.Printf("api: response marshal failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 
 	// Write it back out!
+	status = "success"
 	w.Header().Add("Content-Type", "text/json")
 	w.Write(res)
 }
@@ -84,26 +151,42 @@ func (as *Service) handleMyNotes(w http.ResponseWriter, r *http.Request) {
 func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// Get the authenticated user from the context -- this will have been written earlier
-	_, ok := authuserctx.FromAuthenticatedContext(ctx)
+	userId, ok := authuserctx.FromAuthenticatedContext(ctx)
 	if !ok {
 		as.config.Log.Printf("api: route handler reached with invalid auth context")
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
 	}
 
-	// The URL.Path will be something like /1/my/notes/abc123.json.
+	// The URL.Path will be something like /1/my/note/abc123.json.
 	// path.Base strips everything but "abc123.json". We then Replace out the ".json" to give us
 	// just the ID.
 	id := strings.Replace(path.Base(r.URL.Path), ".json", "", 1)
-	if id == "" {
+	if id == "" || r.URL.Path == "/1/my/note/" || r.URL.Path == "/1/my/note" {
 		fmt.Printf("api: no ID supplied: url path %v\n", r.URL.Path)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
 	}
 
 	// Use the "model" layer to get a list of the owner's notes
 	note, err := model.GetNoteById(ctx, as.pool, id)
+
+	if err == nil && note.Owner != userId {
+		fmt.Printf("api: user %v tried to access note %v", userId, id)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if err != nil && errors.Is(err, pgx.ErrNoRows) {
+		fmt.Printf("api: GetNoteById failed: %v\n", err)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	}
+
 	if err != nil {
 		fmt.Printf("api: GetNoteById failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
 
 	response := struct {
@@ -117,6 +200,7 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("api: response marshal failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
 
 	// Write it back out!
@@ -124,16 +208,32 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+// HTTP handler for health checks
+func (as *Service) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/plain")
+	w.Write([]byte("OK"))
+}
+
 // Set up routes -- this can be used in tests to set up simple HTTP handling
 // rather than running the whole server.
 func (as *Service) Handler() http.Handler {
 	mux := new(http.ServeMux)
-	mux.HandleFunc("/1/my/note/", as.wrapAuth(as.authClient, as.handleMyNoteById))
-	mux.HandleFunc("/1/my/notes.json", as.wrapAuth(as.authClient, as.handleMyNotes))
+	// healthcheck endpoint
+	mux.HandleFunc("/1/health", as.handleHealth)
+	mux.HandleFunc("/1/my/note/", as.wrapRateLimit(as.wrapAuth(as.authClient, as.handleMyNoteById)))
+	mux.HandleFunc("/1/my/notes.json", as.wrapRateLimit(as.wrapAuth(as.authClient, as.handleMyNotes)))
 	return httplogger.HTTPLogger(mux)
 }
 
 func (as *Service) Run(ctx context.Context) error {
+	if !strings.HasSuffix(os.Args[0], ".test") {
+		prometheus.MustRegister(getMyNotesCounter, rateLimiterCounter)
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			http.ListenAndServe(":2112", nil)
+		}()
+	}
+
 	listen := fmt.Sprintf(":%d", as.config.Port)
 
 	// Connect to the database via a "pool" of connections, allowing concurrency

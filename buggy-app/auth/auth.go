@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
+	"os"
+	"strings"
 	"sync"
 
 	pb "github.com/CodeYourFuture/immersive-go-course/buggy-app/auth/service"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 )
@@ -44,6 +48,13 @@ func New(config Config) *Service {
 //		log.Fatal(err)
 //	}
 func (as *Service) Run(ctx context.Context) error {
+	// start prometheus metrics server if not testing
+	if !strings.HasSuffix(os.Args[0], ".test") {
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			http.ListenAndServe(":2112", nil)
+		}()
+	}
 	// Connect to the database via a "pool" of connections, allowing concurrency
 	pool, err := pgxpool.New(ctx, as.config.DatabaseUrl)
 	if err != nil {
@@ -112,8 +123,9 @@ func (as *grpcAuthService) Verify(ctx context.Context, in *pb.VerifyRequest) (*p
 	// Look for this user in the database
 	var row userRow
 	err := as.pool.QueryRow(ctx,
-		"SELECT id, password, status FROM public.user WHERE id = $1",
+		"SELECT id, password, status FROM public.user WHERE id = $1 AND status = $2",
 		in.Id,
+		"active",
 	).Scan(&row.id, &row.password, &row.status)
 	// Error can be no rows or a real error...
 	if err != nil {

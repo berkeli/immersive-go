@@ -45,6 +45,7 @@ services:
     build: .
     ports:
       - "127.0.0.1:8080:80"
+      - "127.0.0.1:2113:2112"
     depends_on:
       - postgres
     volumes:
@@ -61,6 +62,7 @@ services:
     build: .
     ports:
       - "127.0.0.1:8090:80"
+      - "127.0.0.1:2112:2112"
     depends_on:
       - postgres
       - auth
@@ -72,8 +74,28 @@ services:
         read_only: true
     environment:
       - POSTGRES_PASSWORD_FILE=/run/secrets/postgres-passwd
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 128M
     command: /out/api
 
+  prometheus:
+    image: prom/prometheus
+    depends_on:
+      - auth
+      - api
+    ports:
+      - "9090:9090"
+    volumes:
+      - type: bind
+        source: volumes/prometheus
+        target: /etc/prometheus
+      - type: bind
+        source: prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+  
   test:
     build: .
     depends_on:
@@ -84,7 +106,7 @@ services:
         source: volumes/secrets
         target: /run/secrets
         read_only: true
-    command: go test /app/...
+    command: go test /app/... -cover -v
     environment:
       - POSTGRES_PASSWORD_FILE=/run/secrets/postgres-passwd
     profiles: ["test"]

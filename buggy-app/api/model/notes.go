@@ -27,14 +27,14 @@ type dbConn interface {
 	QueryRow(context.Context, string, ...interface{}) pgx.Row
 }
 
-func GetNotesForOwner(ctx context.Context, conn dbConn, owner string) (Notes, error) {
+func GetNotesForOwner(ctx context.Context, conn dbConn, owner string, page, per_page int) (Notes, int, error) {
 	if owner == "" {
-		return nil, errors.New("model: owner not supplied")
+		return nil, 0, errors.New("model: owner not supplied")
 	}
 
-	queryRows, err := conn.Query(ctx, "SELECT id, owner, content, created, modified FROM public.note")
+	queryRows, err := conn.Query(ctx, "SELECT id, owner, content, created, modified FROM public.note WHERE owner = $1 ORDER BY created DESC LIMIT $2 OFFSET $3", owner, per_page, page*per_page)
 	if err != nil {
-		return nil, fmt.Errorf("model: could not query notes: %w", err)
+		return nil, 0, fmt.Errorf("model: could not query notes: %w", err)
 	}
 	defer queryRows.Close()
 
@@ -43,19 +43,25 @@ func GetNotesForOwner(ctx context.Context, conn dbConn, owner string) (Notes, er
 		note := Note{}
 		err = queryRows.Scan(&note.Id, &note.Owner, &note.Content, &note.Created, &note.Modified)
 		if err != nil {
-			return nil, fmt.Errorf("model: query scan failed: %w", err)
+			return nil, 0, fmt.Errorf("model: query scan failed: %w", err)
 		}
-		if note.Owner == owner {
-			note.Tags = extractTags(note.Content)
-			notes = append(notes, note)
-		}
+		note.Tags = extractTags(note.Content)
+		notes = append(notes, note)
 	}
 
 	if queryRows.Err() != nil {
-		return nil, fmt.Errorf("model: query read failed: %w", queryRows.Err())
+		return nil, 0, fmt.Errorf("model: query read failed: %w", queryRows.Err())
 	}
 
-	return notes, nil
+	queryRow := conn.QueryRow(ctx, "SELECT COUNT(*) FROM public.note WHERE owner = $1", owner)
+	count := 0
+	err = queryRow.Scan(&count)
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("model: could not query notes: %w", err)
+	}
+
+	return notes, count, nil
 }
 
 func GetNoteById(ctx context.Context, conn dbConn, id string) (Note, error) {
@@ -77,7 +83,7 @@ func GetNoteById(ctx context.Context, conn dbConn, id string) (Note, error) {
 // Extract tags from the note. We're looking for #something. There could be
 // multiple tags, so we FindAll.
 func extractTags(input string) []string {
-	re := regexp.MustCompile(`#([^#]+)`)
+	re := regexp.MustCompile(`#([a-zA-Z0-9(_)]{1,})`)
 	matches := re.FindAllStringSubmatch(input, -1)
 	tags := make([]string, 0, len(matches))
 	for _, f := range matches {
