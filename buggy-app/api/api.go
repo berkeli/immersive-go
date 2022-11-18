@@ -171,6 +171,12 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	// Use the "model" layer to get a list of the owner's notes
 	note, err := model.GetNoteById(ctx, as.pool, id)
 
+	if err == nil && note.Owner != userId {
+		fmt.Printf("api: user %v tried to access note %v", userId, id)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
 	if err != nil && errors.Is(err, pgx.ErrNoRows) {
 		fmt.Printf("api: GetNoteById failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
@@ -180,12 +186,6 @@ func (as *Service) handleMyNoteById(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("api: GetNoteById failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	if note.Owner != userId {
-		fmt.Printf("api: user %v tried to access note %v", userId, id)
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
