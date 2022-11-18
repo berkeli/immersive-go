@@ -74,3 +74,8 @@ profile-api:
 		sleep 0.5 ; \
         ((number = number + 1)) ; \
     done
+
+crash:
+	@# This will crash the api
+	make profile-api &
+	go run ./cmd/chaos_monkey http
