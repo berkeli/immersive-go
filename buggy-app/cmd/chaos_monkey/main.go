@@ -154,8 +154,8 @@ func MakeRequests(ctx context.Context, users []string, done <-chan bool) {
 	for {
 		select {
 		case <-done:
-			log.Println("Successfully crashed server")
 			ctx.Done()
+			log.Fatalf("Successfully crashed server")
 		default:
 			ok := sem.TryAcquire(1)
 			if !ok {

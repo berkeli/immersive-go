@@ -72,7 +72,8 @@ $$ language 'plpgsql';
 
 -- Create users table
 CREATE TABLE IF NOT EXISTS public.user(
-   id VARCHAR (20) PRIMARY KEY,
+  --ID should not contain : or / because it will be used in URLs
+   id VARCHAR (20) PRIMARY KEY CONSTRAINT valid_user_id CHECK (id ~ '^[a-zA-Z0-9_-]+$'),
    status int NOT NULL,
    password VARCHAR (100) NOT NULL,
    created timestamp default current_timestamp,

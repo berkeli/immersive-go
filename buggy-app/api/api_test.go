@@ -191,12 +191,16 @@ func TestMyNotesAuthPass(t *testing.T) {
 	rows := mock.NewRows([]string{"id", "owner", "content"})
 
 	mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE owner = (.+)?$").WillReturnRows(rows)
+	mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE owner = (.+)?$").
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).
+			AddRow(15))
 
 	req, err := http.NewRequest("GET", "/1/my/notes.json", strings.NewReader(""))
 	if err != nil {
 		log.Fatal(err)
 	}
 	req.Header.Add("Authorization", "Basic ZXhhbXBsZTpleGFtcGxl")
+
 	res := httptest.NewRecorder()
 	handler := as.Handler()
 	handler.ServeHTTP(res, req)
@@ -225,6 +229,9 @@ func TestMyNotesOneNone(t *testing.T) {
 		AddRow(noteId, id, content, created, modified)
 
 	mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE owner = (.+)$").WillReturnRows(rows)
+	mock.ExpectQuery("^SELECT (.+) FROM public.note WHERE owner = (.+)?$").
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).
+			AddRow(15))
 
 	req, err := http.NewRequest("GET", "/1/my/notes.json", strings.NewReader(""))
 	if err != nil {
@@ -239,11 +246,14 @@ func TestMyNotesOneNone(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, res.Code)
 	}
 
-	data := struct {
-		Notes []model.Note `json:"notes"`
-	}{Notes: []model.Note{
-		{Id: noteId, Owner: id, Content: content, Created: created, Modified: modified, Tags: []string{}},
-	}}
+	data := EnvelopeNotes{
+		Notes: []model.Note{
+			{Id: noteId, Owner: id, Content: content, Created: created, Modified: modified, Tags: []string{}},
+		},
+		Total:   15,
+		Page:    0,
+		PerPage: 10,
+	}
 	assertJSON(res.Body.Bytes(), data, t)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
