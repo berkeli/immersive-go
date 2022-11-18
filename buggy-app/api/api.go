@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"strconv"
 
 	"path"
@@ -19,6 +20,8 @@ import (
 	"github.com/CodeYourFuture/immersive-go-course/buggy-app/util/authuserctx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/time/rate"
 
 	httplogger "github.com/gleicon/go-httplogger"
@@ -30,6 +33,22 @@ type DbClient interface {
 	Query(context.Context, string, ...interface{}) (pgx.Rows, error)
 	Close()
 }
+
+var getMyNotesCounter = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_request_get_my_notes_count", // metric name
+		Help: "Number of get_my_notes request.",
+	},
+	[]string{"status"}, // labels
+)
+
+var rateLimiterCounter = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_request_rate_limiter_count", // metric name
+		Help: "Number of rate_limiter request.",
+	},
+	[]string{"status"}, // labels
+)
 
 type Config struct {
 	Port           int
@@ -55,7 +74,7 @@ type EnvelopeNotes struct {
 func New(config Config) *Service {
 	return &Service{
 		config:  config,
-		limiter: rate.NewLimiter(1000, 1000),
+		limiter: rate.NewLimiter(20, 20),
 	}
 }
 
@@ -63,19 +82,26 @@ func New(config Config) *Service {
 func (as *Service) wrapRateLimit(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !as.limiter.Allow() {
+			rateLimiterCounter.WithLabelValues("reject").Inc()
 			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 			return
 		}
+		rateLimiterCounter.WithLabelValues("success").Inc()
 		next(w, r)
 	}
 }
 
 // HTTP handler for getting notes for a particular user
 func (as *Service) handleMyNotes(w http.ResponseWriter, r *http.Request) {
+	var status string
+	defer func() {
+		getMyNotesCounter.WithLabelValues(status).Inc()
+	}()
 	ctx := r.Context()
 	// Get the authenticated user from the context -- this will have been written earlier
 	owner, ok := authuserctx.FromAuthenticatedContext(ctx)
 	if !ok {
+		status = "error"
 		as.config.Log.Printf("api: route handler reached with invalid auth context")
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 	}
@@ -95,6 +121,7 @@ func (as *Service) handleMyNotes(w http.ResponseWriter, r *http.Request) {
 	// Use the "model" layer to get a list of the owner's notes
 	notes, total, err := model.GetNotesForOwner(ctx, as.pool, owner, page, per_page)
 	if err != nil {
+		status = "error"
 		fmt.Printf("api: GetNotesForOwner failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
@@ -109,11 +136,13 @@ func (as *Service) handleMyNotes(w http.ResponseWriter, r *http.Request) {
 	// Convert the []Row into JSON
 	res, err := util.MarshalWithIndent(response, "")
 	if err != nil {
+		status = "error"
 		fmt.Printf("api: response marshal failed: %v\n", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 
 	// Write it back out!
+	status = "success"
 	w.Header().Add("Content-Type", "text/json")
 	w.Write(res)
 }
@@ -197,7 +226,13 @@ func (as *Service) Handler() http.Handler {
 }
 
 func (as *Service) Run(ctx context.Context) error {
-	util.Monitor()
+	prometheus.MustRegister(getMyNotesCounter, rateLimiterCounter)
+	if !strings.HasSuffix(os.Args[0], ".test") {
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			http.ListenAndServe(":2112", nil)
+		}()
+	}
 
 	listen := fmt.Sprintf(":%d", as.config.Port)
 

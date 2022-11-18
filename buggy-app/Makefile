@@ -70,7 +70,12 @@ migrate-local-down:
 profile-api:
 	@# This will record heap for the api for 45 seconds or until there's an error
 	number=1 ; while [[ $$number -le 90 ]] ; do \
-        curl -fs http://localhost:2112/debug/pprof/heap > ./volumes/profile/api/memory-$$number.out || break ; \
+        curl -fs http://localhost:2112/debug/pprof/heap > ./volumes/profile/api/memory-fixed-$$number.out || break ; \
 		sleep 0.5 ; \
         ((number = number + 1)) ; \
     done
+
+crash:
+	@# This will crash the api
+	make profile-api &
+	go run ./cmd/chaos_monkey http

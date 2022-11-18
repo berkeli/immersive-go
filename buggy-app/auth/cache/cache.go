@@ -54,6 +54,7 @@ func (c *Cache[Value]) Put(k Key, v *Value) {
 		expiry: time.Now().Unix() + 3600,
 	})
 	if time.Now().Unix() > c.last_flush+3600 {
+		c.last_flush = time.Now().Unix()
 		go c.Flush()
 	}
 }
