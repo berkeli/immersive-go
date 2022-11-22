@@ -26,7 +26,7 @@ const (
 var TASKS = []string{DOWNLOAD, CONVERT, UPLOAD}
 
 var (
-	OutputHeader       = []string{"url", "input", "output", "s3url", "error"}
+	OutputHeader       = []string{"url", "input", "output", "s3url"}
 	FailedOutputHeader = []string{"url"}
 )
 
@@ -37,17 +37,18 @@ var (
 
 // Pipeline struct
 type Pipeline struct {
-	config     *Config
-	workers    map[string]int
-	maxRetries uint64    // Max number of retries for downloading and uploading an image
-	urlMap     *sync.Map // this will record urls that are already processed so we don't download again.
-	errOut     chan *ErrOut
+	config        *Config
+	workers       map[string]int
+	maxRetries    uint64    // Max number of retries for downloading and uploading an image
+	urlMap        *sync.Map // this will record urls that are already processed so we don't download again.
+	tmpWorkingDir string
 
 	// channels
 	readOut     chan *ReadOut
 	downloadOut chan *DownloadOut
 	convertOut  chan *ConvertOut
 	uploadOut   chan *UploadOut
+	errOut      chan *ErrOut
 }
 
 func (p *Pipeline) Read(csvReader *csv.Reader, out chan *ReadOut) {
@@ -63,7 +64,14 @@ func (p *Pipeline) Read(csvReader *csv.Reader, out chan *ReadOut) {
 			break
 		}
 		if err != nil {
-			p.errOut <- &ErrOut{Err: err}
+			url := ""
+			if len(row) > 0 {
+				url = row[0]
+			}
+			p.errOut <- &ErrOut{
+				Url: url,
+				Err: err,
+			}
 			continue
 		}
 
@@ -112,10 +120,11 @@ func (p *Pipeline) Download(wg *sync.WaitGroup, in <-chan *ReadOut, out chan *Do
 			continue
 		}
 
-		err = os.Rename(inputPath, InputPath(hash, ext))
+		err = os.Rename(inputPath, p.inputPath(hash, ext))
 
 		if err != nil {
-			log.Println(err)
+			log.Println("error renaming file: ", err)
+			hash = urlHash
 		}
 
 		s3key := fmt.Sprintf("%s-converted.%s", hash, ext)
@@ -150,7 +159,7 @@ func (p *Pipeline) Convert(wg *sync.WaitGroup, in <-chan *DownloadOut, out chan 
 	// Send the image to the upload channel
 	defer wg.Done()
 	for row := range in {
-		err := p.config.Converter.Grayscale(InputPath(row.Key, row.Ext), OutputPath(row.Key, row.Ext))
+		err := p.config.Converter.Grayscale(p.inputPath(row.Key, row.Ext), p.outputPath(row.Key, row.Ext))
 		if err != nil {
 			p.errOut <- &ErrOut{
 				Url: row.Url,
@@ -174,7 +183,7 @@ func (p *Pipeline) Upload(wg *sync.WaitGroup, in <-chan *ConvertOut, out chan *U
 	defer wg.Done()
 	for row := range in {
 
-		file, err := os.Open(OutputPath(row.Key, row.Ext))
+		file, err := os.Open(p.outputPath(row.Key, row.Ext))
 
 		if err != nil {
 			p.errOut <- &ErrOut{
@@ -186,9 +195,7 @@ func (p *Pipeline) Upload(wg *sync.WaitGroup, in <-chan *ConvertOut, out chan *U
 			continue
 		}
 
-		key := fmt.Sprintf("%s-converted.%s", row.Key, row.Ext)
-
-		err = UploadToS3WithBackoff(file, key, p.config.Aws, p.maxRetries)
+		err = UploadToS3WithBackoff(file, row.AwsKey(), p.config.Aws, p.maxRetries)
 
 		if err != nil {
 			p.errOut <- &ErrOut{
@@ -204,7 +211,7 @@ func (p *Pipeline) Upload(wg *sync.WaitGroup, in <-chan *ConvertOut, out chan *U
 			Url:   row.Url,
 			Key:   row.Key,
 			Ext:   row.Ext,
-			S3url: fmt.Sprintf("https://%s.s3.amazonaws.com/%s", p.config.Aws.s3bucket, key),
+			S3url: fmt.Sprintf("https://%s.s3.amazonaws.com/%s", p.config.Aws.s3bucket, row.AwsKey()),
 		}
 	}
 }
@@ -252,8 +259,8 @@ func WriteError(done chan bool, in <-chan *ErrOut, ErrorFilepath string) {
 	w.Write(FailedOutputHeader)
 
 	for row := range in {
-		fmt.Println("Received error: ", row.Err)
-		w.Write([]string{row.Url, row.Key, row.Ext, row.Err.Error()})
+		log.Println("url: ", row.Url, " failed with error: ", row.Err)
+		w.Write([]string{row.Url})
 	}
 	done <- true
 }
@@ -267,6 +274,14 @@ func (p *Pipeline) closeChannel(task string) {
 	case UPLOAD:
 		close(p.uploadOut)
 	}
+}
+
+func (p *Pipeline) inputPath(key, ext string) string {
+	return fmt.Sprintf("%s/%s.%s", p.tmpWorkingDir, key, ext)
+}
+
+func (p *Pipeline) outputPath(key, ext string) string {
+	return fmt.Sprintf("%s/%s-converted.%s", p.tmpWorkingDir, key, ext)
 }
 
 func (p *Pipeline) Execute() error {
@@ -327,9 +342,10 @@ func (p *Pipeline) Execute() error {
 
 func NewPipeline(config *Config) *Pipeline {
 	return &Pipeline{
-		config:     config,
-		maxRetries: 3,
-		urlMap:     &sync.Map{},
+		config:        config,
+		maxRetries:    3,
+		urlMap:        &sync.Map{},
+		tmpWorkingDir: "/outputs",
 		workers: map[string]int{
 			DOWNLOAD: 10,
 			CONVERT:  3, // this sometimes fails due to C binding issue. In case of failure, reduce to 1

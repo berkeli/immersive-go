@@ -4,14 +4,12 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -24,7 +22,8 @@ func TestPipeline_Read(t *testing.T) {
 	type Test struct {
 		CSVContent     string
 		Size           int
-		ExpectedOutput []*Out
+		ExpectedOutput []*ReadOut
+		ExpectedErrOut []*ErrOut
 	}
 
 	csvErr := &csv.ParseError{
@@ -38,7 +37,7 @@ func TestPipeline_Read(t *testing.T) {
 		"valid CSV": {
 			CSVContent: `https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png`,
 			Size:       1,
-			ExpectedOutput: []*Out{
+			ExpectedOutput: []*ReadOut{
 				{
 					Url: "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png",
 				},
@@ -47,8 +46,9 @@ func TestPipeline_Read(t *testing.T) {
 		"CSV with extra column": {
 			CSVContent: `https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png,extra`,
 			Size:       1,
-			ExpectedOutput: []*Out{
+			ExpectedErrOut: []*ErrOut{
 				{
+					Url: "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png",
 					Err: csvErr,
 				},
 			},
@@ -57,13 +57,15 @@ func TestPipeline_Read(t *testing.T) {
 			CSVContent: `https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png,extra
 https://placekitten.com/408/287`,
 			Size: 2,
-			ExpectedOutput: []*Out{
-				{
-					Err: csvErr,
-				},
+			ExpectedOutput: []*ReadOut{
 				{
 					Url: "https://placekitten.com/408/287",
-					Err: nil,
+				},
+			},
+			ExpectedErrOut: []*ErrOut{
+				{
+					Url: "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png",
+					Err: csvErr,
 				},
 			},
 		},
@@ -74,16 +76,25 @@ https://placekitten.com/408/287`,
 			r := csv.NewReader(strings.NewReader(test.CSVContent))
 
 			p := NewPipeline(&Config{})
-			p.channels[READ] = make(chan *Out, test.Size)
-			p.Read(r)
+			readOut := make(chan *ReadOut, len(test.ExpectedOutput))
+			p.errOut = make(chan *ErrOut, len(test.ExpectedErrOut))
+			go p.Read(r, readOut)
 
-			var gotArr []*Out
+			var gotArr []*ReadOut
+			var gotErrArr []*ErrOut
 
-			for v := range p.channels[READ] {
-				gotArr = append(gotArr, v)
+			for i := 0; i < len(test.ExpectedOutput); i++ {
+				got := <-readOut
+				gotArr = append(gotArr, got)
+			}
+
+			for i := 0; i < len(test.ExpectedErrOut); i++ {
+				got := <-p.errOut
+				gotErrArr = append(gotErrArr, got)
 			}
 
 			require.ElementsMatch(t, test.ExpectedOutput, gotArr)
+			require.ElementsMatch(t, test.ExpectedErrOut, gotErrArr)
 
 		})
 
@@ -96,60 +107,61 @@ func TestPipeline_Download(t *testing.T) {
 	srv := httptest.NewServer(fs)
 
 	type Test struct {
-		In             []*Out
-		ExpectedOutput []*Out
+		In             []*ReadOut
+		ExpectedOutput []*DownloadOut
+		ExpectedErrOut []*ErrOut
 	}
 
 	tests := map[string]Test{
 		"valid PNG": {
-			In: []*Out{
+			In: []*ReadOut{
 				{
 					Url: srv.URL + "/test.png",
 				},
 			},
-			ExpectedOutput: []*Out{
+			ExpectedOutput: []*DownloadOut{
 				{
-					Url:    srv.URL + "/test.png",
-					Input:  "/outputs/e5765cefe1b8d33fc78315437516439d.png",
-					Output: "/outputs/e5765cefe1b8d33fc78315437516439d-converted.png",
+					Url: srv.URL + "/test.png",
+					Key: "e5765cefe1b8d33fc78315437516439d",
+					Ext: "png",
 				},
 			},
 		},
 		"valid JPG": {
-			In: []*Out{
+			In: []*ReadOut{
 				{
 					Url: srv.URL + "/test.jpg",
 				},
 			},
-			ExpectedOutput: []*Out{
+			ExpectedOutput: []*DownloadOut{
 				{
-					Url:    srv.URL + "/test.jpg",
-					Input:  "/outputs/85e42ea4f380785dd6ae5c6361399d87.jpeg",
-					Output: "/outputs/85e42ea4f380785dd6ae5c6361399d87-converted.jpeg",
+					Url: srv.URL + "/test.jpg",
+					Key: "85e42ea4f380785dd6ae5c6361399d87",
+					Ext: "jpeg",
 				},
 			},
 		},
 		"valid GIF": {
-			In: []*Out{
+			In: []*ReadOut{
 				{
 					Url: srv.URL + "/test.gif",
 				},
 			},
-			ExpectedOutput: []*Out{
+			ExpectedOutput: []*DownloadOut{
 				{
-					Url:    srv.URL + "/test.gif",
-					Input:  "/outputs/d5c423921f7654ad178b167897564b13.gif",
-					Output: "/outputs/d5c423921f7654ad178b167897564b13-converted.gif",
+					Url: srv.URL + "/test.gif",
+					Key: "d5c423921f7654ad178b167897564b13",
+					Ext: "gif",
 				},
 			},
 		},
 		"Not an image #1": {
-			In: []*Out{
+			In: []*ReadOut{
 				{
 					Url: srv.URL + "/test.txt",
 				},
 			},
-			ExpectedOutput: []*Out{
+			ExpectedErrOut: []*ErrOut{
 				{
 					Url: srv.URL + "/test.txt",
 					Err: errors.New("image: unknown format"),
@@ -157,12 +169,12 @@ func TestPipeline_Download(t *testing.T) {
 			},
 		},
 		"Not an image #2 (Remote URL)": {
-			In: []*Out{
+			In: []*ReadOut{
 				{
 					Url: "https://www.google.com/",
 				},
 			},
-			ExpectedOutput: []*Out{
+			ExpectedErrOut: []*ErrOut{
 				{
 					Url: "https://www.google.com/",
 					Err: errors.New("image: unknown format"),
@@ -170,46 +182,15 @@ func TestPipeline_Download(t *testing.T) {
 			},
 		},
 		"invalid url": {
-			In: []*Out{
+			In: []*ReadOut{
 				{
 					Url: "http://notavalidurl:8080/test.png",
 				},
 			},
-			ExpectedOutput: []*Out{
+			ExpectedErrOut: []*ErrOut{
 				{
 					Url: "http://notavalidurl:8080/test.png",
 					Err: invalidHostErr(t, "http://notavalidurl:8080/test.png"),
-				},
-			},
-		},
-		"erroneous row": {
-			In: []*Out{
-				{
-					Url: "http://notavalidurl:8080/test.png",
-					Err: errors.New("wrong number of fields"),
-				},
-			},
-			ExpectedOutput: []*Out{
-				{
-					Url: "http://notavalidurl:8080/test.png",
-					Err: errors.New("wrong number of fields"),
-				},
-			},
-		},
-		"duplicates": {
-			In: []*Out{
-				{Url: srv.URL + "/test.png"},
-				{Url: srv.URL + "/test.png"},
-			},
-			ExpectedOutput: []*Out{
-				{
-					Url:    srv.URL + "/test.png",
-					Input:  "/outputs/e5765cefe1b8d33fc78315437516439d.png",
-					Output: "/outputs/e5765cefe1b8d33fc78315437516439d-converted.png",
-				},
-				{
-					Url: srv.URL + "/test.png",
-					Err: ErrDuplicateURL,
 				},
 			},
 		},
@@ -227,40 +208,36 @@ func TestPipeline_Download(t *testing.T) {
 			})
 			p.maxRetries = 1
 
-			p.channels[READ] = make(chan *Out, len(test.In))
-			p.channels[DOWNLOAD] = make(chan *Out, len(test.In))
+			readOut := make(chan *ReadOut, len(test.In))
+			downloadOut := make(chan *DownloadOut, len(test.In))
 
 			for _, v := range test.In {
-				p.channels[READ] <- v
+				readOut <- v
 			}
-			close(p.channels[READ])
+			close(readOut)
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go p.Download(wg)
+			go p.Download(wg, readOut, downloadOut)
 			wg.Wait()
-			close(p.channels[DOWNLOAD])
+			close(downloadOut)
 
-			var gotArr []*Out
+			var gotArr []*DownloadOut
 
-			for v := range p.channels[DOWNLOAD] {
+			for v := range downloadOut {
 				gotArr = append(gotArr, v)
 			}
 
 			require.Equal(t, len(gotArr), len(test.ExpectedOutput))
 
 			for _, downloadRow := range gotArr {
-				if downloadRow.Err == nil {
-					verifyFile(t, downloadRow.Input)
-				}
+				verifyFile(t, InputPath(downloadRow.Key, downloadRow.Ext))
 			}
 
 			require.ElementsMatch(t, gotArr, test.ExpectedOutput)
 
 			t.Cleanup(func() {
 				for _, outRow := range gotArr {
-					if outRow.Err == nil {
-						os.Remove(outRow.Input)
-					}
+					os.Remove(InputPath(outRow.Key, outRow.Ext))
 				}
 			})
 		})
@@ -284,75 +261,50 @@ func TestPipeline_Convert(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		In            []*Out
+		In            []*DownloadOut
 		ExpectedCalls [][]string
-		ExpectedOut   []*Out
+		ExpectedOut   []*ConvertOut
 	}{
 		"valid image": {
-			In: []*Out{
+			In: []*DownloadOut{
 				{
-					Input:  "/outputs/test.jpg",
-					Output: "/outputs/test-converted.jpg",
+					Key: "test",
+					Ext: "jpg",
 				},
 			},
 			ExpectedCalls: [][]string{
 				{"convert", "/outputs/test.jpg", "-set", "colorspace", "Gray", "/outputs/test-converted.jpg"},
 			},
-			ExpectedOut: []*Out{
+			ExpectedOut: []*ConvertOut{
 				{
-					Input:  "/outputs/test.jpg",
-					Output: "/outputs/test-converted.jpg",
+					Key: "test",
+					Ext: "jpg",
 				},
 			},
 		},
 		"multiple images": {
-			In: []*Out{
+			In: []*DownloadOut{
 				{
-					Input:  "/outputs/test1.jpg",
-					Output: "/outputs/test1-converted.jpg",
+					Key: "test1",
+					Ext: "jpg",
 				},
 				{
-					Input:  "/outputs/test2.jpg",
-					Output: "/outputs/test2-converted.jpg",
-				},
-			},
-			ExpectedCalls: [][]string{
-				{"convert", "/outputs/test1.jpg", "-set", "colorspace", "Gray", "/outputs/test1-converted.jpg"},
-				{"convert", "/outputs/test2.jpg", "-set", "colorspace", "Gray", "/outputs/test2-converted.jpg"},
-			},
-			ExpectedOut: []*Out{
-				{
-					Input:  "/outputs/test1.jpg",
-					Output: "/outputs/test1-converted.jpg",
-				},
-				{
-					Input:  "/outputs/test2.jpg",
-					Output: "/outputs/test2-converted.jpg",
-				},
-			},
-		},
-		"erroneous rows should be skipped": {
-			In: []*Out{
-				{
-					Input:  "/outputs/test1.jpg",
-					Output: "/outputs/test1-converted.jpg",
-				},
-				{
-					Input: "/outputs/test2.jpg",
-					Err:   fmt.Errorf("some error"),
+					Key: "test2",
+					Ext: "png",
 				},
 			},
 			ExpectedCalls: [][]string{
 				{"convert", "/outputs/test1.jpg", "-set", "colorspace", "Gray", "/outputs/test1-converted.jpg"},
+				{"convert", "/outputs/test2.png", "-set", "colorspace", "Gray", "/outputs/test2-converted.png"},
 			},
-			ExpectedOut: []*Out{
+			ExpectedOut: []*ConvertOut{
 				{
-					Input:  "/outputs/test1.jpg",
-					Output: "/outputs/test1-converted.jpg",
+					Key: "test1",
+					Ext: "jpg",
 				},
 				{
-					Input: "/outputs/test2.jpg",
-					Err:   fmt.Errorf("some error"),
+					Key: "test2",
+					Ext: "png",
 				},
 			},
 		},
@@ -367,30 +319,28 @@ func TestPipeline_Convert(t *testing.T) {
 				Converter: setupMockConverter(t, &got),
 			})
 
-			p.channels[DOWNLOAD] = make(chan *Out, len(test.In))
-			p.channels[CONVERT] = make(chan *Out, len(test.In))
+			downOut := make(chan *DownloadOut, len(test.In))
+			convertOut := make(chan *ConvertOut, len(test.In))
 
 			for _, v := range test.In {
-				p.channels[DOWNLOAD] <- v
+				downOut <- v
 			}
 
-			close(p.channels[DOWNLOAD])
+			close(downOut)
 
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go p.Convert(wg)
+			go p.Convert(wg, downOut, convertOut)
 			wg.Wait()
-			close(p.channels[CONVERT])
+			close(convertOut)
 
-			var gotArr []*Out
+			var gotArr []*ConvertOut
 
-			for v := range p.channels[CONVERT] {
+			for v := range convertOut {
 				gotArr = append(gotArr, v)
 			}
 
 			require.Equal(t, len(gotArr), len(test.In))
-
-			require.ElementsMatch(t, test.In, gotArr)
 
 			require.ElementsMatch(t, test.ExpectedCalls, got)
 
@@ -407,33 +357,41 @@ func TestPipeline_Convert(t *testing.T) {
 			},
 		})
 
-		p.channels[DOWNLOAD] = make(chan *Out, 1)
-		p.channels[CONVERT] = make(chan *Out, 1)
+		p.errOut = make(chan *ErrOut, 1)
 
-		p.channels[DOWNLOAD] <- &Out{
-			Input:  "/outputs/test1.jpg",
-			Output: "/outputs/test1-converted.jpg",
+		downOut := make(chan *DownloadOut, 1)
+		convertOut := make(chan *ConvertOut, 1)
+
+		downOut <- &DownloadOut{
+			Url: "http://localhost:8080/test1.jpg",
+			Key: "test1",
+			Ext: "jpg",
 		}
 
-		close(p.channels[DOWNLOAD])
+		close(downOut)
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		go p.Convert(wg)
+		go p.Convert(wg, downOut, convertOut)
 		wg.Wait()
-		close(p.channels[CONVERT])
+		close(convertOut)
 
-		var gotArr []*Out
+		var gotArr []*ConvertOut
 
-		for v := range p.channels[CONVERT] {
+		for v := range convertOut {
 			gotArr = append(gotArr, v)
 		}
 
-		require.Equal(t, 1, len(gotArr))
+		expErr := &ErrOut{
+			Url: "http://localhost:8080/test1.jpg",
+			Key: "test1",
+			Ext: "jpg",
+			Err: fmt.Errorf("error converting image: some error"),
+		}
 
-		require.Equal(t, "/outputs/test1.jpg", gotArr[0].Input)
-		require.Equal(t, "", gotArr[0].Output)
-		require.EqualError(t, gotArr[0].Err, "some error")
+		require.Equal(t, 0, len(gotArr), "should not have any output")
+
+		require.Equal(t, expErr, <-p.errOut)
 	})
 }
 
@@ -452,62 +410,50 @@ func TestPipeline_Upload(t *testing.T) {
 	})
 
 	p.maxRetries = 1
+	p.tmpWorkingDir = "/inputs/test_assets"
 
 	tests := map[string]struct {
-		In           []*Out
-		ExpectedCall *s3.PutObjectInput
-		Out          []*Out
+		In             []*ConvertOut
+		ExpectedCall   *s3.PutObjectInput
+		ExpectedOut    []*UploadOut
+		ExpectedErrOut []*ErrOut
 	}{
 		"valid file": {
-			In: []*Out{
+			In: []*ConvertOut{
 				{
-					Output: "/inputs/test_assets/test.jpg",
+					Url: "http://someurl:8080/test.jpg",
+					Key: "test",
+					Ext: "jpg",
 				},
 			},
 			ExpectedCall: &s3.PutObjectInput{
 				Bucket: aws.String("some_bucket"),
-				Key:    aws.String("test.jpg"),
+				Key:    aws.String("test-converted.jpg"),
 			},
-			Out: []*Out{
+			ExpectedOut: []*UploadOut{
 				{
-					Output: "/inputs/test_assets/test.jpg",
-					S3url:  fmt.Sprintf("https://%s.s3.amazonaws.com/test.jpg", "some_bucket"),
-					Err:    nil,
+					Url:   "http://someurl:8080/test.jpg",
+					Key:   "test",
+					Ext:   "jpg",
+					S3url: "https://some_bucket.s3.amazonaws.com/test-converted.jpg",
 				},
 			},
 		},
 		"erroneous file": {
-			In: []*Out{
+			In: []*ConvertOut{
 				{
-					Output: "/inputs/test_assets/not-found.jpg",
+					Url: "http://someurl:8080/not-found.jpg",
+					Key: "not-found",
+					Ext: "jpg",
 				},
 			},
 			ExpectedCall: &s3.PutObjectInput{},
-			Out: []*Out{
+			ExpectedErrOut: []*ErrOut{
 				{
-					Output: "/inputs/test_assets/not-found.jpg",
-					S3url:  "",
-					Err: &fs.PathError{
-						Op:   "open",
-						Path: "/inputs/test_assets/not-found.jpg",
-						Err:  syscall.ENOENT,
-					},
-				},
-			},
-		},
-		"erroneous row": {
-			In: []*Out{
-				{
-					Output: "/inputs/test_assets/not-found.jpg",
-					Err:    fmt.Errorf("some error"),
-				},
-			},
-			ExpectedCall: &s3.PutObjectInput{},
-			Out: []*Out{
-				{
-					Output: "/inputs/test_assets/not-found.jpg",
-					S3url:  "",
-					Err:    fmt.Errorf("some error"),
+					Url: "http://someurl:8080/not-found.jpg",
+					Key: "not-found",
+					Ext: "jpg",
+					Err: fmt.Errorf("some error"),
 				},
 			},
 		},
@@ -515,30 +461,30 @@ func TestPipeline_Upload(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			p.channels[CONVERT] = make(chan *Out, len(test.In))
-			p.channels[UPLOAD] = make(chan *Out, len(test.In))
+			convertOut := make(chan *ConvertOut, len(test.In))
+			uploadOut := make(chan *UploadOut, len(test.In))
 
 			for _, v := range test.In {
-				p.channels[CONVERT] <- v
+				convertOut <- v
 			}
 
-			close(p.channels[CONVERT])
+			close(convertOut)
 
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go p.Upload(wg)
+			go p.Upload(wg, convertOut, uploadOut)
 			wg.Wait()
-			close(p.channels[UPLOAD])
+			close(uploadOut)
 
-			var gotArr []*Out
+			var gotArr []*UploadOut
 
-			for v := range p.channels[UPLOAD] {
+			for v := range uploadOut {
 				gotArr = append(gotArr, v)
 			}
 
-			require.Equal(t, len(gotArr), len(test.In))
+			// require.Equal(t, len(test.In), len(gotArr))
 
-			require.ElementsMatch(t, test.Out, gotArr)
+			require.ElementsMatch(t, test.ExpectedOut, gotArr)
 
 			require.Equal(t, test.ExpectedCall.Bucket, call.Bucket)
 			require.Equal(t, test.ExpectedCall.Key, call.Key)
@@ -561,106 +507,149 @@ func TestPipeline_Upload(t *testing.T) {
 		})
 
 		p.maxRetries = 1
+		p.tmpWorkingDir = "/inputs/test_assets"
 
-		p.channels[CONVERT] = make(chan *Out, 1)
-		p.channels[UPLOAD] = make(chan *Out, 1)
+		convertOut := make(chan *ConvertOut, 1)
+		uploadOut := make(chan *UploadOut, 1)
 
-		p.channels[CONVERT] <- &Out{
-			Output: "/inputs/test_assets/test.jpg",
+		convertOut <- &ConvertOut{
+			Url: "http://someurl:8080/test.jpg",
+			Key: "test",
+			Ext: "jpg",
 		}
 
-		close(p.channels[CONVERT])
+		close(convertOut)
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		go p.Upload(wg)
+		go p.Upload(wg, convertOut, uploadOut)
 		wg.Wait()
-		close(p.channels[UPLOAD])
+		close(uploadOut)
 
-		var gotArr []*Out
+		var gotArr []*UploadOut
 
-		for v := range p.channels[UPLOAD] {
+		for v := range uploadOut {
 			gotArr = append(gotArr, v)
 		}
 
-		require.Equal(t, len(gotArr), 1)
+		expErr := &ErrOut{
+			Url: "http://someurl:8080/test.jpg",
+			Key: "test",
+			Ext: "jpg",
+			Err: fmt.Errorf("failed to upload to S3: some error"),
+		}
 
-		require.Equal(t, "/inputs/test_assets/test.jpg", gotArr[0].Output)
-		require.Equal(t, "", gotArr[0].S3url)
-		require.Equal(t, fmt.Errorf("some error"), gotArr[0].Err)
+		require.Equal(t, len(gotArr), 0)
+
+		require.Equal(t, expErr, <-p.errOut)
 	})
 
 }
 
-func TestPipeline_Write(t *testing.T) {
+func WriteSetup(t *testing.T, outputFile, failedOutputFile string) (*Pipeline, func()) {
+	t.Helper()
+	// Create a temporary folder
+	tempDir, err := os.MkdirTemp("/outputs", "tests")
+	require.NoError(t, err)
 
-	setupSuite := func(t *testing.T, outputFile, failedOutputFile string) (*Pipeline, func()) {
-		t.Helper()
-		// Create a temporary folder
-		tempDir, err := os.MkdirTemp("/outputs", "tests")
-		require.NoError(t, err)
+	p := NewPipeline(&Config{})
 
-		p := NewPipeline(&Config{})
-
-		if outputFile != "" {
-			p.config.OutputFilepath = path.Join(tempDir, outputFile)
-		}
-
-		if failedOutputFile != "" {
-			p.config.FailedOutputFilepath = path.Join(tempDir, failedOutputFile)
-		}
-
-		return p, func() {
-			os.RemoveAll(tempDir)
-		}
+	if outputFile != "" {
+		p.config.OutputFilepath = path.Join(tempDir, outputFile)
 	}
 
+	if failedOutputFile != "" {
+		p.config.FailedOutputFilepath = path.Join(tempDir, failedOutputFile)
+	}
+
+	return p, func() {
+		os.RemoveAll(tempDir)
+	}
+}
+
+func TestPipeline_WriteSuccess(t *testing.T) {
+
 	tests := map[string]struct {
-		OutputFilepath       string
-		FailedOutputFilepath string
-		In                   []*Out
-		ExpectedCSV          [][]string
-		ExpectedFailedCSV    [][]string
+		OutputFilepath string
+		In             []*UploadOut
+		ExpectedCSV    [][]string
 	}{
-		"valid output, no failed": {
+		"valid output": {
 			OutputFilepath: "test1.csv",
-			In: []*Out{
+			In: []*UploadOut{
 				{
-					Url:    "https://some-url.com/1.jpg",
-					Input:  "/outputs/1.jpg",
-					Output: "/outputs/1-converted.jpg",
-					S3url:  "https://some-bucket.s3.amazonaws.com/1-converted.jpg",
+					Url:   "https://some-url.com/1.jpg",
+					Key:   "1",
+					Ext:   "jpg",
+					S3url: "https://some-bucket.s3.amazonaws.com/1-converted.jpg",
 				},
 			},
 			ExpectedCSV: [][]string{
 				OutputHeader,
-				{"https://some-url.com/1.jpg", "/outputs/1.jpg", "/outputs/1-converted.jpg", "https://some-bucket.s3.amazonaws.com/1-converted.jpg", ""},
+				{"https://some-url.com/1.jpg", "/outputs/1.jpg", "/outputs/1-converted.jpg", "https://some-bucket.s3.amazonaws.com/1-converted.jpg"},
 			},
 		},
-		"valid output, with failed": {
-			OutputFilepath:       "test2.csv",
-			FailedOutputFilepath: "failed.csv",
-			In: []*Out{
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			p, teardown := WriteSetup(t, test.OutputFilepath, "")
+			defer teardown()
+
+			uploadOut := make(chan *UploadOut, len(test.In))
+
+			for _, v := range test.In {
+				uploadOut <- v
+			}
+
+			close(uploadOut)
+
+			done := make(chan bool)
+			go WriteSuccess(done, uploadOut, p.config.OutputFilepath)
+
+			<-done
+
+			assertCSVOutputFile(t, p.config.OutputFilepath, test.ExpectedCSV)
+
+		})
+	}
+}
+
+func TestPipeline_WriteError(t *testing.T) {
+
+	tests := map[string]struct {
+		FailedOutputFilepath string
+		In                   []*ErrOut
+		ExpectedCSV          [][]string
+	}{
+		"valid output": {
+			FailedOutputFilepath: "test2.csv",
+			In: []*ErrOut{
 				{
-					Url:    "https://some-url.com/1.jpg",
-					Input:  "/outputs/1.jpg",
-					Output: "/outputs/1-converted.jpg",
-					S3url:  "https://some-bucket.s3.amazonaws.com/1-converted.jpg",
-				},
-				{
-					Url:    "https://some-url.com/2.jpg",
-					Input:  "/outputs/2.jpg",
-					Output: "/outputs/2-converted.jpg",
-					Err:    fmt.Errorf("some error"),
+					Url: "https://some-url.com/1.jpg",
+					Err: fmt.Errorf("some error"),
 				},
 			},
 			ExpectedCSV: [][]string{
-				OutputHeader,
-				{"https://some-url.com/1.jpg", "/outputs/1.jpg", "/outputs/1-converted.jpg", "https://some-bucket.s3.amazonaws.com/1-converted.jpg", ""},
-				{"https://some-url.com/2.jpg", "/outputs/2.jpg", "/outputs/2-converted.jpg", "", "some error"},
-			},
-			ExpectedFailedCSV: [][]string{
 				FailedOutputHeader,
+				{"https://some-url.com/1.jpg"},
+			},
+		},
+		"multiple lines": {
+			FailedOutputFilepath: "test3.csv",
+			In: []*ErrOut{
+				{
+					Url: "https://some-url.com/1.jpg",
+					Err: fmt.Errorf("some error"),
+				},
+				{
+					Url: "https://some-url.com/2.jpg",
+					Err: fmt.Errorf("some other error"),
+				},
+			},
+			ExpectedCSV: [][]string{
+				FailedOutputHeader,
+				{"https://some-url.com/1.jpg"},
 				{"https://some-url.com/2.jpg"},
 			},
 		},
@@ -668,36 +657,30 @@ func TestPipeline_Write(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			p, teardown := setupSuite(t, test.OutputFilepath, test.FailedOutputFilepath)
+			p, teardown := WriteSetup(t, "", test.FailedOutputFilepath)
 			defer teardown()
 
-			p.channels[UPLOAD] = make(chan *Out, len(test.In))
+			errOut := make(chan *ErrOut, len(test.In))
 
 			for _, v := range test.In {
-				p.channels[UPLOAD] <- v
+				errOut <- v
 			}
 
-			close(p.channels[UPLOAD])
+			close(errOut)
 
 			done := make(chan bool)
-			go p.Write(done)
+			go WriteError(done, errOut, p.config.FailedOutputFilepath)
 
 			<-done
 
-			if test.OutputFilepath != "" {
-				assertCSVOutputFile(t, p.config.OutputFilepath, test.ExpectedCSV)
-			}
-
-			if test.FailedOutputFilepath != "" {
-				assertCSVOutputFile(t, p.config.FailedOutputFilepath, test.ExpectedFailedCSV)
-			}
+			assertCSVOutputFile(t, p.config.FailedOutputFilepath, test.ExpectedCSV)
 		})
 	}
 }
 
 func TestPipeline_Execute(t *testing.T) {
 
-	setupSuite := func(t *testing.T, data [][]string) (*Pipeline, func(string)) {
+	setupSuite := func(t *testing.T, data [][]string) (*Pipeline, func()) {
 		t.Helper()
 		// Create a temporary folder
 		tempDir, err := os.MkdirTemp("/outputs", "tests")
@@ -735,27 +718,13 @@ func TestPipeline_Execute(t *testing.T) {
 		})
 
 		p.maxRetries = 1
+		p.tmpWorkingDir = tempDir
 
 		p.config.OutputFilepath = path.Join(tempDir, "test.csv")
 		p.config.FailedOutputFilepath = path.Join(tempDir, "failed.csv")
 
-		return p, func(outputFile string) {
-			defer os.RemoveAll(tempDir)
-
-			if outputFile != "" {
-				f, err := os.Open(outputFile)
-				require.NoError(t, err)
-
-				r := csv.NewReader(f)
-				content, err := r.ReadAll()
-
-				require.NoError(t, err)
-
-				for _, row := range content {
-					os.Remove(row[1])
-					os.Remove(row[2])
-				}
-			}
+		return p, func() {
+			os.RemoveAll(tempDir)
 		}
 	}
 
@@ -776,11 +745,9 @@ func TestPipeline_Execute(t *testing.T) {
 
 		wantOutputCSV := [][]string{
 			OutputHeader,
-			{srv.URL + "/test.jpg", "/outputs/85e42ea4f380785dd6ae5c6361399d87.jpeg", "/outputs/85e42ea4f380785dd6ae5c6361399d87-converted.jpeg", "https://some-bucket.s3.amazonaws.com/85e42ea4f380785dd6ae5c6361399d87-converted.jpeg", ""},
-			{srv.URL + "/test.gif", "/outputs/d5c423921f7654ad178b167897564b13.gif", "/outputs/d5c423921f7654ad178b167897564b13-converted.gif", "https://some-bucket.s3.amazonaws.com/d5c423921f7654ad178b167897564b13-converted.gif", ""},
-			{srv.URL + "/test.png", "/outputs/e5765cefe1b8d33fc78315437516439d.png", "/outputs/e5765cefe1b8d33fc78315437516439d-converted.png", "https://some-bucket.s3.amazonaws.com/e5765cefe1b8d33fc78315437516439d-converted.png", ""},
-			{srv.URL + "/test.txt", "", "", "", "image: unknown format"},
-			{srv.URL + "/not-found", "", "", "", "received status 404 when trying to download image"},
+			{srv.URL + "/test.jpg", "/outputs/85e42ea4f380785dd6ae5c6361399d87.jpeg", "/outputs/85e42ea4f380785dd6ae5c6361399d87-converted.jpeg", "https://some-bucket.s3.amazonaws.com/85e42ea4f380785dd6ae5c6361399d87-converted.jpeg"},
+			{srv.URL + "/test.gif", "/outputs/d5c423921f7654ad178b167897564b13.gif", "/outputs/d5c423921f7654ad178b167897564b13-converted.gif", "https://some-bucket.s3.amazonaws.com/d5c423921f7654ad178b167897564b13-converted.gif"},
+			{srv.URL + "/test.png", "/outputs/e5765cefe1b8d33fc78315437516439d.png", "/outputs/e5765cefe1b8d33fc78315437516439d-converted.png", "https://some-bucket.s3.amazonaws.com/e5765cefe1b8d33fc78315437516439d-converted.png"},
 		}
 
 		wantFailedOutputCSV := [][]string{
@@ -790,13 +757,12 @@ func TestPipeline_Execute(t *testing.T) {
 		}
 
 		p, teardown := setupSuite(t, inputCSV)
+		defer teardown()
 
 		p.Execute()
 
-		assertCSVOutputFile(t, p.config.OutputFilepath, wantOutputCSV)
 		assertCSVOutputFile(t, p.config.FailedOutputFilepath, wantFailedOutputCSV)
-
-		teardown(p.config.OutputFilepath)
+		assertCSVOutputFile(t, p.config.OutputFilepath, wantOutputCSV)
 	})
 }
 
@@ -815,6 +781,7 @@ func assertCSVOutputFile(t *testing.T, path string, want [][]string) {
 
 	r := csv.NewReader(f)
 	content, err := r.ReadAll()
+	fmt.Println("content", content)
 	require.NoError(t, err)
 
 	require.ElementsMatch(t, want, content)

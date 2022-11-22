@@ -19,6 +19,7 @@ func TestDownloadFileFromUrl(t *testing.T) {
 		File           string
 		ExpectedErr    error
 		ExpectedFormat string
+		CheckHash      bool
 	}
 	tests := map[string]Test{
 		"valid PNG": {
@@ -40,7 +41,7 @@ func TestDownloadFileFromUrl(t *testing.T) {
 			File:        "test",
 			ExpectedErr: fmt.Errorf("received status 404 when trying to download image"),
 		},
-		"Not and image": {
+		"Not an image": {
 			File:        "test.txt",
 			ExpectedErr: fmt.Errorf("image: unknown format"),
 		},
@@ -52,7 +53,19 @@ func TestDownloadFileFromUrl(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, format, err := DownloadFileFromUrl(srv.URL + "/" + test.File)
+			//create temp file
+			tempDir, err := os.MkdirTemp("/outputs", "tests")
+			require.NoError(t, err)
+			defer t.Cleanup(func() {
+				os.RemoveAll(tempDir)
+			})
+
+			tmpFileName := fmt.Sprintf("test-%d.%s", time.Now().UnixNano(), test.ExpectedFormat)
+
+			file, err := os.Create(path.Join(tempDir, tmpFileName))
+			require.NoError(t, err)
+
+			_, format, err := DownloadFileFromUrl(srv.URL+"/"+test.File, file)
 
 			require.Equal(t, test.ExpectedErr, err)
 

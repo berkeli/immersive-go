@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/aws/aws-sdk-go/service/s3"
 	"gopkg.in/gographics/imagick.v2/imagick"
 )
@@ -22,7 +24,6 @@ func (c *Converter) Grayscale(inputFilepath string, outputFilepath string) error
 
 type ReadOut struct {
 	Url string
-	Err error
 }
 
 type DownloadOut struct {
@@ -42,6 +43,10 @@ type UploadOut struct {
 	Key   string
 	Ext   string
 	S3url string
+}
+
+func (r *ConvertOut) AwsKey() string {
+	return fmt.Sprintf("%s-converted.%s", r.Key, r.Ext)
 }
 
 type ErrOut struct {
