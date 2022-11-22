@@ -16,7 +16,6 @@ run: outputs
 test: outputs
 	docker build --target test -t test .
 	docker run \
-		--mount type=bind,source="$$(pwd)/outputs",target=/outputs \
 		--rm test \
 
 develop: outputs
