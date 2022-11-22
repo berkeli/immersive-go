@@ -464,6 +464,10 @@ func TestPipeline_Upload(t *testing.T) {
 			convertOut := make(chan *ConvertOut, len(test.In))
 			uploadOut := make(chan *UploadOut, len(test.In))
 
+			defer t.Cleanup(func() {
+				call = &s3.PutObjectInput{}
+			})
+
 			for _, v := range test.In {
 				convertOut <- v
 			}
@@ -482,15 +486,10 @@ func TestPipeline_Upload(t *testing.T) {
 				gotArr = append(gotArr, v)
 			}
 
-			// require.Equal(t, len(test.In), len(gotArr))
-
 			require.ElementsMatch(t, test.ExpectedOut, gotArr)
 
 			require.Equal(t, test.ExpectedCall.Bucket, call.Bucket)
 			require.Equal(t, test.ExpectedCall.Key, call.Key)
-			t.Cleanup(func() {
-				call = &s3.PutObjectInput{}
-			})
 		})
 	}
 

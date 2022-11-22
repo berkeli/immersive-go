@@ -32,6 +32,10 @@ type DownloadOut struct {
 	Ext string
 }
 
+func (r *DownloadOut) AwsKey() string {
+	return awsKey(r.Key, r.Ext)
+}
+
 type ConvertOut struct {
 	Url string
 	Key string
@@ -46,7 +50,7 @@ type UploadOut struct {
 }
 
 func (r *ConvertOut) AwsKey() string {
-	return fmt.Sprintf("%s-converted.%s", r.Key, r.Ext)
+	return awsKey(r.Key, r.Ext)
 }
 
 type ErrOut struct {
@@ -62,4 +66,11 @@ type AWSConfig struct {
 
 	PutObject func(input *s3.PutObjectInput) (*s3.PutObjectOutput, error)
 	GetObject func(input *s3.GetObjectInput) (*s3.GetObjectOutput, error)
+}
+
+func awsKey(key, ext string) string {
+	if ext == "" {
+		return fmt.Sprintf("%s-converted", key)
+	}
+	return fmt.Sprintf("%s-converted.%s", key, ext)
 }

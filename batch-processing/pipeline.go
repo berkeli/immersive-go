@@ -100,7 +100,6 @@ func (p *Pipeline) Download(wg *sync.WaitGroup, in <-chan *ReadOut, out chan *Do
 		md5 := md5.Sum([]byte(row.Url))
 		urlHash := hex.EncodeToString(md5[:])
 		inputPath := fmt.Sprintf("/outputs/%s", urlHash)
-		log.Println("input path:", inputPath)
 		file, err := os.Create(inputPath)
 		if err != nil {
 			p.errOut <- &ErrOut{
@@ -127,30 +126,27 @@ func (p *Pipeline) Download(wg *sync.WaitGroup, in <-chan *ReadOut, out chan *Do
 			hash = urlHash
 		}
 
-		s3key := fmt.Sprintf("%s-converted.%s", hash, ext)
-
-		// Check if the image hash is already in the S3 bucket
-		_, err = p.config.Aws.GetObject(&s3.GetObjectInput{
-			Bucket: &p.config.Aws.s3bucket,
-			Key:    &s3key,
-		})
-
-		if err == nil {
-			os.Remove(inputPath)
-			p.errOut <- &ErrOut{
-				Url: row.Url,
-				Key: hash,
-				Ext: ext,
-				Err: ErrImageExistsInS3,
-			}
-			continue
-		}
-
-		out <- &DownloadOut{
+		dRow := &DownloadOut{
 			Url: row.Url,
 			Key: hash,
 			Ext: ext,
 		}
+
+		key := dRow.AwsKey()
+
+		// Check if the image hash is already in the S3 bucket
+		_, err = p.config.Aws.GetObject(&s3.GetObjectInput{
+			Bucket: &p.config.Aws.s3bucket,
+			Key:    &key,
+		})
+
+		if err == nil {
+			os.Remove(inputPath)
+			log.Println("URL: ", row.Url, " already exists in S3, skipping")
+			continue
+		}
+
+		out <- dRow
 	}
 }
 
