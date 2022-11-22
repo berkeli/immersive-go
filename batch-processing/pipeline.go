@@ -1,13 +1,14 @@
 package main
 
 import (
+	"crypto/md5"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -38,203 +39,179 @@ var (
 type Pipeline struct {
 	config     *Config
 	workers    map[string]int
-	channels   map[string]chan *Out
 	maxRetries uint64    // Max number of retries for downloading and uploading an image
 	urlMap     *sync.Map // this will record urls that are already processed so we don't download again.
+	errOut     chan *ErrOut
+
+	// channels
+	readOut     chan *ReadOut
+	downloadOut chan *DownloadOut
+	convertOut  chan *ConvertOut
+	uploadOut   chan *UploadOut
 }
 
-type Task func(wg *sync.WaitGroup)
-
-func (p *Pipeline) Read(csvReader *csv.Reader) {
+func (p *Pipeline) Read(csvReader *csv.Reader, out chan *ReadOut) {
 	// Read the input CSV file
 	// For each line, send the URL to the download channel
-	defer close(p.channels[READ])
+	defer close(out)
 
 	csvReader.FieldsPerRecord = 1
 
 	for {
 		row, err := csvReader.Read()
-
 		if err == io.EOF {
 			break
 		}
-
 		if err != nil {
-			p.channels[READ] <- &Out{Err: err}
+			p.errOut <- &ErrOut{Err: err}
 			continue
 		}
-		p.channels[READ] <- &Out{Url: row[0]}
+
+		// check if URL was already read
+		_, ok := p.urlMap.Load(row[0])
+		if ok {
+			p.errOut <- &ErrOut{Err: ErrDuplicateURL}
+			continue
+		}
+
+		p.urlMap.Store(row[0], true)
+		out <- &ReadOut{Url: row[0]}
 	}
 	log.Println("Read done")
 }
 
-func (p *Pipeline) Download(wg *sync.WaitGroup) {
+func (p *Pipeline) Download(wg *sync.WaitGroup, in <-chan *ReadOut, out chan *DownloadOut) {
 	// Download the image from the URL
 	// Send the image to the convert channel
 	defer wg.Done()
 	var (
-		row  *Out
-		ok   bool
-		body io.Reader
 		hash string
 		ext  string
-		err  error
 	)
-	for {
-
-		row, ok = <-p.channels[READ]
-		if !ok {
-			break
-		}
-		if row.Err != nil {
-			p.channels[DOWNLOAD] <- row
-			continue
-		}
-
-		// Check if the URL has already been processed
-		// If it has, skip it
-		_, ok := p.urlMap.Load(row.Url)
-		if ok {
-			p.channels[DOWNLOAD] <- &Out{
+	for row := range in {
+		md5 := md5.Sum([]byte(row.Url))
+		urlHash := hex.EncodeToString(md5[:])
+		inputPath := fmt.Sprintf("/outputs/%s", urlHash)
+		log.Println("input path:", inputPath)
+		file, err := os.Create(inputPath)
+		if err != nil {
+			p.errOut <- &ErrOut{
 				Url: row.Url,
-				Err: ErrDuplicateURL,
+				Err: err,
 			}
 			continue
-		} else {
-			p.urlMap.Store(row.Url, true)
 		}
-
-		body, ext, hash, err = DownloadWithBackoff(row.Url, p.maxRetries)
-
+		hash, ext, err = DownloadWithBackoff(row.Url, p.maxRetries, file)
+		file.Close()
 		if err != nil {
-			row.Err = err
-			p.channels[DOWNLOAD] <- row
+			os.Remove(inputPath)
+			p.errOut <- &ErrOut{
+				Url: row.Url,
+				Err: err,
+			}
 			continue
 		}
 
-		key := fmt.Sprintf("%s-converted.%s", hash, ext)
+		err = os.Rename(inputPath, InputPath(hash, ext))
+
+		if err != nil {
+			log.Println(err)
+		}
+
+		s3key := fmt.Sprintf("%s-converted.%s", hash, ext)
 
 		// Check if the image hash is already in the S3 bucket
 		_, err = p.config.Aws.GetObject(&s3.GetObjectInput{
 			Bucket: &p.config.Aws.s3bucket,
-			Key:    &key,
+			Key:    &s3key,
 		})
 
 		if err == nil {
-			row.Err = ErrImageExistsInS3
-			row.S3url = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", p.config.Aws.s3bucket, hash)
-			p.channels[DOWNLOAD] <- row
-			continue
-		}
-
-		//Create an empty file
-		inputPath := fmt.Sprintf("/outputs/%s.%s", hash, ext)
-		outputPath := fmt.Sprintf("/outputs/%s", key)
-
-		file, err := os.Create(inputPath)
-		if err != nil {
-			p.channels[DOWNLOAD] <- &Out{
+			os.Remove(inputPath)
+			p.errOut <- &ErrOut{
 				Url: row.Url,
-				Err: err,
-			}
-			continue
-		}
-		defer file.Close()
-
-		//Write bytes to the file
-		_, err = io.Copy(file, body)
-		if err != nil {
-			p.channels[DOWNLOAD] <- &Out{
-				Url: row.Url,
-				Err: err,
+				Key: hash,
+				Ext: ext,
+				Err: ErrImageExistsInS3,
 			}
 			continue
 		}
 
-		p.channels[DOWNLOAD] <- &Out{
-			Url:    row.Url,
-			Input:  inputPath,
-			Output: outputPath,
+		out <- &DownloadOut{
+			Url: row.Url,
+			Key: hash,
+			Ext: ext,
 		}
 	}
 }
 
-func (p *Pipeline) Convert(wg *sync.WaitGroup) {
+func (p *Pipeline) Convert(wg *sync.WaitGroup, in <-chan *DownloadOut, out chan *ConvertOut) {
 	// Convert the image
 	// Send the image to the upload channel
 	defer wg.Done()
-	for {
-		row, ok := <-p.channels[DOWNLOAD]
-		if !ok {
-			break
-		}
-		if row.Err != nil {
-			p.channels[CONVERT] <- &Out{
-				Url:    row.Url,
-				Err:    row.Err,
-				Input:  row.Input,
-				Output: "",
-			}
-			continue
-		}
-		err := p.config.Converter.Grayscale(row.Input, row.Output)
+	for row := range in {
+		err := p.config.Converter.Grayscale(InputPath(row.Key, row.Ext), OutputPath(row.Key, row.Ext))
 		if err != nil {
-			p.channels[CONVERT] <- &Out{
-				Url:    row.Url,
-				Err:    err,
-				Input:  row.Input,
-				Output: "",
+			p.errOut <- &ErrOut{
+				Url: row.Url,
+				Key: row.Key,
+				Ext: row.Ext,
+				Err: fmt.Errorf("error converting image: %v", err),
 			}
 			continue
 		}
-		p.channels[CONVERT] <- row
+		out <- &ConvertOut{
+			Url: row.Url,
+			Key: row.Key,
+			Ext: row.Ext,
+		}
 	}
 }
 
-func (p *Pipeline) Upload(wg *sync.WaitGroup) {
+func (p *Pipeline) Upload(wg *sync.WaitGroup, in <-chan *ConvertOut, out chan *UploadOut) {
 	// Upload the image to S3
 	// Send the image to the result channel
 	defer wg.Done()
-	for {
-		row, ok := <-p.channels[CONVERT]
-		if !ok {
-			break
-		}
+	for row := range in {
 
-		if row.Err != nil {
-			p.channels[UPLOAD] <- row
-			continue
-		}
-
-		file, err := os.Open(row.Output)
+		file, err := os.Open(OutputPath(row.Key, row.Ext))
 
 		if err != nil {
-			row.Err = err
-			p.channels[UPLOAD] <- row
+			p.errOut <- &ErrOut{
+				Url: row.Url,
+				Key: row.Key,
+				Ext: row.Ext,
+				Err: fmt.Errorf("failed to open file: %v", err),
+			}
 			continue
 		}
 
-		// Upload to S3
-		path := strings.Split(row.Output, "/")
-		key := path[len(path)-1]
+		key := fmt.Sprintf("%s-converted.%s", row.Key, row.Ext)
 
 		err = UploadToS3WithBackoff(file, key, p.config.Aws, p.maxRetries)
 
 		if err != nil {
-			row.Err = err
-			p.channels[UPLOAD] <- row
+			p.errOut <- &ErrOut{
+				Url: row.Url,
+				Key: row.Key,
+				Ext: row.Ext,
+				Err: fmt.Errorf("failed to upload to S3: %v", err),
+			}
 			continue
 		}
 
-		row.S3url = fmt.Sprintf("https://%s.s3.amazonaws.com/%s", p.config.Aws.s3bucket, key)
-
-		p.channels[UPLOAD] <- row
+		out <- &UploadOut{
+			Url:   row.Url,
+			Key:   row.Key,
+			Ext:   row.Ext,
+			S3url: fmt.Sprintf("https://%s.s3.amazonaws.com/%s", p.config.Aws.s3bucket, key),
+		}
 	}
 }
 
-func (p *Pipeline) Write(done chan bool) {
+func WriteSuccess(done chan bool, in <-chan *UploadOut, OutputFilepath string) {
 
-	f, err := os.Create(p.config.OutputFilepath)
+	f, err := os.Create(OutputFilepath)
 	if err != nil {
 		log.Fatalf("error creating output file: %v", err)
 	}
@@ -243,73 +220,86 @@ func (p *Pipeline) Write(done chan bool) {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	w.Write(OutputHeader)
-	var failedW *csv.Writer
 
-	// Create csv for failed output if param is set
-	if p.config.FailedOutputFilepath != "" {
-		failedF, err := os.Create(p.config.FailedOutputFilepath)
-		if err != nil {
-			log.Fatalf("error creating failed output file: %v", err)
-		}
-		defer failedF.Close()
-
-		failedW = csv.NewWriter(failedF)
-		defer failedW.Flush()
-		failedW.Write(FailedOutputHeader)
-	}
-
-	for {
-		row, ok := <-p.channels[UPLOAD]
-
-		if !ok {
-			break
-		}
-		rowErr := ""
-		// only add to failed output if row has an error, but not a duplicate error or image exists error
-		if row.Err != nil {
-			if p.config.FailedOutputFilepath != "" && row.Err != ErrDuplicateURL && row.Err != ErrImageExistsInS3 {
-				failedW.Write([]string{row.Url})
-			}
-			rowErr = row.Err.Error()
-		}
-
-		w.Write([]string{row.Url, row.Input, row.Output, row.S3url, rowErr})
+	for row := range in {
+		w.Write([]string{row.Url, InputPath(row.Key, row.Ext), OutputPath(row.Key, row.Ext), row.S3url})
 	}
 	done <- true
 }
 
-func (p *Pipeline) taskPicker(task string) Task {
-	switch task {
-	case DOWNLOAD:
-		return p.Download
-	case CONVERT:
-		return p.Convert
-	case UPLOAD:
-		return p.Upload
+func WriteError(done chan bool, in <-chan *ErrOut, ErrorFilepath string) {
+
+	if ErrorFilepath == "" {
+		for range in {
+			// do nothing, only unblock the channel
+
+		}
+		done <- true
+		return
 	}
 
-	return nil
+	f, err := os.Create(ErrorFilepath)
+	if err != nil {
+		log.Fatalf("error creating error file: %v", err)
+	}
+
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+
+	defer w.Flush()
+
+	w.Write(FailedOutputHeader)
+
+	for row := range in {
+		fmt.Println("Received error: ", row.Err)
+		w.Write([]string{row.Url, row.Key, row.Ext, row.Err.Error()})
+	}
+	done <- true
+}
+
+func (p *Pipeline) closeChannel(task string) {
+	switch task {
+	case DOWNLOAD:
+		close(p.downloadOut)
+	case CONVERT:
+		close(p.convertOut)
+	case UPLOAD:
+		close(p.uploadOut)
+	}
 }
 
 func (p *Pipeline) Execute() error {
 
 	start := time.Now()
 
-	done := make(chan bool)
-	go p.Write(done)
+	doneSuccess := make(chan bool)
+	go WriteSuccess(doneSuccess, p.uploadOut, p.config.OutputFilepath)
+	doneError := make(chan bool)
+	go WriteError(doneError, p.errOut, p.config.FailedOutputFilepath)
 
 	// Start the workers
 	wgTasks := &sync.WaitGroup{}
 	for _, task := range TASKS {
 		wgTasks.Add(1)
 		go func(task string) {
-			var wg sync.WaitGroup
+			fmt.Printf("Executing task: %s, with %d workers\n", task, p.workers[task])
+			wg := &sync.WaitGroup{}
+			wg.Add(p.workers[task])
 			for i := 0; i < p.workers[task]; i++ {
-				wg.Add(1)
-				go p.taskPicker(task)(&wg)
+				switch task {
+				case DOWNLOAD:
+					go p.Download(wg, p.readOut, p.downloadOut)
+				case CONVERT:
+					go p.Convert(wg, p.downloadOut, p.convertOut)
+				case UPLOAD:
+					go p.Upload(wg, p.convertOut, p.uploadOut)
+				default:
+					log.Fatalf("unknown task: %s", task)
+				}
 			}
 			wg.Wait()
-			close(p.channels[task])
+			p.closeChannel(task)
 			wgTasks.Done()
 		}(task)
 	}
@@ -320,15 +310,17 @@ func (p *Pipeline) Execute() error {
 	if err != nil {
 		return err
 	}
-	go p.Read(csvReader)
+	go p.Read(csvReader, p.readOut)
 
 	// Wait for all tasks to finish
 	wgTasks.Wait()
+	close(p.errOut)
 	elapsed := time.Since(start)
 
 	log.Printf("Finished in %s", elapsed)
 
-	<-done
+	<-doneSuccess
+	<-doneError
 
 	return nil
 }
@@ -338,16 +330,15 @@ func NewPipeline(config *Config) *Pipeline {
 		config:     config,
 		maxRetries: 3,
 		urlMap:     &sync.Map{},
-		channels: map[string]chan *Out{
-			READ:     make(chan *Out),
-			DOWNLOAD: make(chan *Out),
-			CONVERT:  make(chan *Out),
-			UPLOAD:   make(chan *Out),
-		},
 		workers: map[string]int{
 			DOWNLOAD: 10,
 			CONVERT:  3, // this sometimes fails due to C binding issue. In case of failure, reduce to 1
 			UPLOAD:   10,
 		},
+		readOut:     make(chan *ReadOut),
+		downloadOut: make(chan *DownloadOut),
+		convertOut:  make(chan *ConvertOut),
+		uploadOut:   make(chan *UploadOut),
+		errOut:      make(chan *ErrOut, 5),
 	}
 }

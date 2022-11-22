@@ -52,7 +52,7 @@ func TestDownloadFileFromUrl(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, format, _, err := DownloadFileFromUrl(srv.URL + "/" + test.File)
+			_, format, err := DownloadFileFromUrl(srv.URL + "/" + test.File)
 
 			require.Equal(t, test.ExpectedErr, err)
 

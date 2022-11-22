@@ -20,12 +20,35 @@ func (c *Converter) Grayscale(inputFilepath string, outputFilepath string) error
 	return err
 }
 
-type Out struct {
-	Url    string
-	Input  string
-	Output string
-	S3url  string
-	Err    error
+type ReadOut struct {
+	Url string
+	Err error
+}
+
+type DownloadOut struct {
+	Url string
+	Key string
+	Ext string
+}
+
+type ConvertOut struct {
+	Url string
+	Key string
+	Ext string
+}
+
+type UploadOut struct {
+	Url   string
+	Key   string
+	Ext   string
+	S3url string
+}
+
+type ErrOut struct {
+	Url string
+	Key string
+	Ext string
+	Err error
 }
 
 type AWSConfig struct {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/md5"
 	"encoding/csv"
 	"encoding/hex"
@@ -32,44 +31,41 @@ const (
 /**
 * Download the image from the URL
 * @param: {string} URL - the URL of the image to download
-* @return: {io.Reader} body - the body of the image
+* @return: {[]byte} hash - md5 sum of the image
 * @return: {string} ext - the file extension (format) of the image
 * @return: {error} err - any error that occurred
  */
-func DownloadFileFromUrl(URL string) (io.Reader, string, [16]byte, error) {
+func DownloadFileFromUrl(URL string, file *os.File) ([]byte, string, error) {
 	response, err := http.Get(URL)
-	hash := [16]byte{}
 	if err != nil {
-		return nil, "", hash, err
+		return nil, "", err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, "", hash, fmt.Errorf(CouldNotFetchImage, response.StatusCode)
+		return nil, "", fmt.Errorf(CouldNotFetchImage, response.StatusCode)
 	}
 
-	var buf bytes.Buffer
+	hashReader := md5.New()
 
-	tee := io.TeeReader(response.Body, &buf)
+	tee := io.TeeReader(response.Body, file)
+	teeHash := io.TeeReader(tee, hashReader)
 
-	// this reads only part of the file for format etc
-	_, format, err := image.DecodeConfig(tee)
+	_, format, err := image.Decode(teeHash)
 
 	if err != nil {
-		return nil, "", hash, err
+		return nil, "", err
 	}
-	// copy rest of the file
-	io.Copy(&buf, tee)
 
-	hash = md5.Sum(buf.Bytes())
+	hash := hashReader.Sum(nil)
 
 	SupportedImageTypes := []string{"jpeg", "png", "gif"}
 
 	if !contains(SupportedImageTypes, format) {
-		return nil, "", hash, fmt.Errorf("unsupported image type, only the following are supported: %s", SupportedImageTypes)
+		return nil, "", fmt.Errorf("unsupported image type, only the following are supported: %s", SupportedImageTypes)
 	}
 
-	return &buf, format, hash, nil
+	return hash, format, nil
 }
 
 /**
@@ -80,14 +76,13 @@ func DownloadFileFromUrl(URL string) (io.Reader, string, [16]byte, error) {
 * @return: {string} hash - the md5 hash of the image
 * @return: {error} err - any error that occurred
  */
-func DownloadWithBackoff(url string, maxRetries uint64) (io.Reader, string, string, error) {
-	var body io.Reader
+func DownloadWithBackoff(url string, maxRetries uint64, file *os.File) (string, string, error) {
 	var format string
-	var hash [16]byte
+	var hash []byte
 	var err error
 
 	operation := func() error {
-		body, format, hash, err = DownloadFileFromUrl(url)
+		hash, format, err = DownloadFileFromUrl(url, file)
 
 		if err != nil {
 			return err
@@ -105,21 +100,21 @@ func DownloadWithBackoff(url string, maxRetries uint64) (io.Reader, string, stri
 	err = backoff.RetryNotify(operation, b, notify)
 
 	if err != nil {
-		return nil, "", "", err
+		return "", "", err
 	}
 
-	return body, format, hex.EncodeToString(hash[:]), nil
+	return hex.EncodeToString(hash), format, nil
 }
 
 /**
-* Check if the provided image type is supported
-* @param: {[]string} SupportedImageTypes - the supported image types
-* @param: {string} mimeType - the image type to check
-* @return: {bool} - whether or not the image type is supported
+* Helper function to check if a string is in a slice of strings
+* @param: {[]string} slice - the slice of strings to search
+* @param: {string}  value - the value to search for
+* @return: {bool} - true if the value is in the slice, false otherwise
  */
-func contains(SupportedImageTypes []string, mimeType string) bool {
-	for _, t := range SupportedImageTypes {
-		if t == mimeType {
+func contains(arr []string, val string) bool {
+	for _, v := range arr {
+		if v == val {
 			return true
 		}
 	}
@@ -182,4 +177,12 @@ func UploadToS3WithBackoff(file *os.File, key string, a *AWSConfig, maxRetries u
 	err := backoff.RetryNotify(operation, b, notify)
 
 	return err
+}
+
+func InputPath(key, ext string) string {
+	return fmt.Sprintf("/outputs/%s.%s", key, ext)
+}
+
+func OutputPath(key, ext string) string {
+	return fmt.Sprintf("/outputs/%s-converted.%s", key, ext)
 }
