@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option go_package = "github.com/berkeli/immersive-go/batch-processing/services/reader/service";
+
+package service;
+
+service Reader {
+    rpc ReadAndPublish(stream ReaderRequest) returns (ReaderResponse) {}
+}
+
+message ReaderRequest {
+    bytes csv = 1;
+}
+
+message ReaderResponse {
+    string message = 1;
+}

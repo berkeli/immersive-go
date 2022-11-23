@@ -28,5 +28,16 @@ develop: outputs
 		--mount type=bind,source="$$(pwd)/outputs",target=/app/outputs \
 		--rm develop
 
+reader_server:
+	go run ./cmd/reader_server
+
+downloader:
+	go run ./cmd/downloader
+
 reader:
-	go run ./services/reader --input ./inputs/large-input.csv
+	go run ./cmd/read --input inputs/large-input.csv --addr localhost:50051
+
+protoc: services/reader/service/reader.proto
+	protoc --go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		services/reader/service/reader.proto

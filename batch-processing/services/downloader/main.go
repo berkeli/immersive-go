@@ -1,18 +1,12 @@
-package main
+package downloader
 
 import (
-	"crypto/md5"
-	"encoding/hex"
-	"flag"
+	"context"
 	"fmt"
-	"image"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"time"
 
-	"github.com/cenkalti/backoff"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -20,116 +14,99 @@ const (
 	CouldNotFetchImage = "received status %d when trying to download image"
 )
 
-func main() {
-	kafkaHost := os.Getenv("KAFKA_BROKER")
+const (
+	ERR_TOPIC = "errors"
+)
 
-	if kafkaHost == "" {
-		log.Println("KAFKA_BROKER not set, using default - localhost:9092")
-		kafkaHost = "localhost:9092"
+type Config struct {
+	MaxRetries   uint64
+	KafkaBrokers []string
+	InTopic      string
+	OutTopic     string
+	Partition    int
+	OutputPath   string
+}
+
+type DownloadService struct {
+	config *Config
+}
+
+func NewDownloadService(config *Config) *DownloadService {
+	return &DownloadService{
+		config: config,
 	}
+}
 
-	maxRetries := flag.Int("max-retries", 3, "The maximum number of times to retry a failed download with exponential backoff. Default if 3.")
-	flag.Parse()
-
+func (ds *DownloadService) Run(ctx context.Context) error {
 	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{kafkaHost},
-		Topic:   "reader",
-		GroupID: "downloaders",
+		Brokers:   ds.config.KafkaBrokers,
+		Topic:     ds.config.InTopic,
+		GroupID:   "downloaders",
+		Partition: ds.config.Partition,
 	})
+	defer r.Close()
 
-	
-}
-
-/**
-* Download the image from the URL
-* @param: {string} URL - the URL of the image to download
-* @return: {[]byte} hash - md5 sum of the image
-* @return: {string} ext - the file extension (format) of the image
-* @return: {error} err - any error that occurred
- */
-func DownloadFileFromUrl(URL string, file *os.File) ([]byte, string, error) {
-	response, err := http.Get(URL)
-	if err != nil {
-		return nil, "", err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, "", fmt.Errorf(CouldNotFetchImage, response.StatusCode)
-	}
-
-	hashReader := md5.New()
-
-	tee := io.TeeReader(response.Body, file)
-	teeHash := io.TeeReader(tee, hashReader)
-
-	_, format, err := image.Decode(teeHash)
+	w, err := kafka.DialContext(ctx, "tcp", ds.config.KafkaBrokers[0])
 
 	if err != nil {
-		return nil, "", err
+		return err
 	}
 
-	hash := hashReader.Sum(nil)
+	defer w.Close()
 
-	SupportedImageTypes := []string{"jpeg", "png", "gif"}
+	w.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
-	if !contains(SupportedImageTypes, format) {
-		return nil, "", fmt.Errorf("unsupported image type, only the following are supported: %s", SupportedImageTypes)
-	}
+	for {
+		m, err := r.ReadMessage(ctx)
+		if err != nil {
+			log.Printf("failed to read message: %v", err)
+			continue
+		}
 
-	return hash, format, nil
-}
+		filePath := fmt.Sprintf("%s/%s", ds.config.OutputPath, GetMD5Hash(m.Value))
 
-/**
-* Download the image from the URL with exponential backoff
-* @param: {string} URL - the URL of the image to download
-* @return: {io.Reader} body - the body of the image
-* @return: {string} ext - the file extension (format) of the image
-* @return: {string} hash - the md5 hash of the image
-* @return: {error} err - any error that occurred
- */
-func DownloadWithBackoff(url string, maxRetries uint64, file *os.File) (string, string, error) {
-	var format string
-	var hash []byte
-	var err error
-
-	operation := func() error {
-		hash, format, err = DownloadFileFromUrl(url, file)
+		f, err := os.Create(filePath)
 
 		if err != nil {
-			return err
+			log.Println("Failed to create file for ", string(m.Value), " error: ", err)
+			w.WriteMessages(kafka.Message{
+				Topic: ERR_TOPIC,
+				Key:   m.Key,
+				Value: []byte(fmt.Sprintf("Failed to create file, error: %s", err)),
+			})
+			continue
 		}
 
-		return nil
-	}
+		hash, ext, err := DownloadWithBackoff(string(m.Value), ds.config.MaxRetries, f)
 
-	notify := func(err error, t time.Duration) {
-		log.Printf("Error downloading file from %s: %s. Retrying in %s)\n", url, err, t)
-	}
+		if err != nil {
+			log.Println("Failed to download ", string(m.Value), " error: ", err)
+			w.WriteMessages(kafka.Message{
+				Topic: ERR_TOPIC,
+				Key:   m.Key,
+				Value: []byte(fmt.Sprintf("Failed to download, error: %s", err)),
+			})
+			continue
+		}
 
-	b := backoff.WithMaxRetries(backoff.NewExponentialBackOff(), maxRetries)
+		f.Close()
 
-	err = backoff.RetryNotify(operation, b, notify)
+		err = os.Rename(filePath, fmt.Sprintf("%s/%s.%s", ds.config.OutputPath, hash, ext))
+		fmt.Println("renamed file to ", fmt.Sprintf("%s/%s.%s", ds.config.OutputPath, hash, ext))
 
-	if err != nil {
-		return "", "", err
-	}
-
-	return hex.EncodeToString(hash), format, nil
-}
-
-/**
-* Helper function to check if a string is in a slice of strings
-* @param: {[]string} slice - the slice of strings to search
-* @param: {string}  value - the value to search for
-* @return: {bool} - true if the value is in the slice, false otherwise
- */
-func contains(arr []string, val string) bool {
-	for _, v := range arr {
-		if v == val {
-			return true
+		if err != nil {
+			log.Println("Failed to rename file ", string(m.Value), " error: ", err)
+			w.WriteMessages(kafka.Message{
+				Topic: ds.config.OutTopic,
+				Key:   m.Key,
+				Value: []byte(fmt.Sprintf("%s.%s", GetMD5Hash(m.Value), ext)),
+			})
+		} else {
+			w.WriteMessages(kafka.Message{
+				Topic: ds.config.OutTopic,
+				Key:   m.Key,
+				Value: []byte(fmt.Sprintf("%s.%s", hash, ext)),
+			})
 		}
 	}
-
-	return false
 }
