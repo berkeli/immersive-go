@@ -76,13 +76,13 @@ func (p *Pipeline) Read(csvReader *csv.Reader, out chan *ReadOut) {
 		}
 
 		// check if URL was already read
-		_, ok := p.urlMap.Load(row[0])
-		if ok {
-			p.errOut <- &ErrOut{Err: ErrDuplicateURL}
+		if _, ok := p.urlMap.LoadOrStore(row[0], true); ok {
+			p.errOut <- &ErrOut{
+				Url: row[0],
+				Err: ErrDuplicateURL,
+			}
 			continue
 		}
-
-		p.urlMap.Store(row[0], true)
 		out <- &ReadOut{Url: row[0]}
 	}
 	log.Println("Read done")
@@ -218,15 +218,15 @@ func WriteSuccess(done chan bool, in <-chan *UploadOut, OutputFilepath string) {
 	if err != nil {
 		log.Fatalf("error creating output file: %v", err)
 	}
-	defer f.Close()
 
 	w := csv.NewWriter(f)
-	defer w.Flush()
 	w.Write(OutputHeader)
 
 	for row := range in {
 		w.Write([]string{row.Url, InputPath(row.Key, row.Ext), OutputPath(row.Key, row.Ext), row.S3url})
 	}
+	w.Flush()
+	f.Close()
 	done <- true
 }
 
@@ -246,11 +246,7 @@ func WriteError(done chan bool, in <-chan *ErrOut, ErrorFilepath string) {
 		log.Fatalf("error creating error file: %v", err)
 	}
 
-	defer f.Close()
-
 	w := csv.NewWriter(f)
-
-	defer w.Flush()
 
 	w.Write(FailedOutputHeader)
 
@@ -258,6 +254,8 @@ func WriteError(done chan bool, in <-chan *ErrOut, ErrorFilepath string) {
 		log.Println("url: ", row.Url, " failed with error: ", row.Err)
 		w.Write([]string{row.Url})
 	}
+	w.Flush()
+	f.Close()
 	done <- true
 }
 

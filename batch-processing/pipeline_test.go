@@ -780,7 +780,6 @@ func assertCSVOutputFile(t *testing.T, path string, want [][]string) {
 
 	r := csv.NewReader(f)
 	content, err := r.ReadAll()
-	fmt.Println("content", content)
 	require.NoError(t, err)
 
 	require.ElementsMatch(t, want, content)
