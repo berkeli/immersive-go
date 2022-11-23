@@ -27,3 +27,6 @@ develop: outputs
 		-e AWS_REGION=eu-west-2 -e AWS_PROFILE=cyfplus -e S3_BUCKET="batch-processing-berkeli"\
 		--mount type=bind,source="$$(pwd)/outputs",target=/app/outputs \
 		--rm develop
+
+reader:
+	go run ./services/reader --input ./inputs/large-input.csv
