@@ -11,6 +11,8 @@ import (
 	"sync"
 
 	rs "github.com/berkeli/immersive-go/batch-processing/services/reader/service"
+	u "github.com/berkeli/immersive-go/batch-processing/utils"
+
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/grpc"
 )
@@ -36,8 +38,9 @@ func NewReaderService(config *Config) *ReaderService {
 }
 
 func (s *ReaderService) Run(ctx context.Context) error {
-	w := &kafka.Writer{
-		Addr: kafka.TCP(s.config.KafkaBrokers...),
+	kafka := &kafka.Writer{
+		Addr:                   kafka.TCP(s.config.KafkaBrokers...),
+		AllowAutoTopicCreation: true,
 	}
 
 	listen := fmt.Sprintf(":%d", s.config.Port)
@@ -49,7 +52,7 @@ func (s *ReaderService) Run(ctx context.Context) error {
 
 	grpcServer := grpc.NewServer()
 
-	rService := NewGRPCReaderService(w, s.config.Topic)
+	rService := NewGRPCReaderService(kafka, s.config.Topic)
 
 	rs.RegisterReaderServer(grpcServer, rService)
 
@@ -61,7 +64,6 @@ func (s *ReaderService) Run(ctx context.Context) error {
 		runErr = grpcServer.Serve(lis)
 	}()
 
-	<-ctx.Done()
 	wg.Wait()
 	return runErr
 }
@@ -69,18 +71,19 @@ func (s *ReaderService) Run(ctx context.Context) error {
 type grpcReaderService struct {
 	rs.UnimplementedReaderServer
 
-	conn  *kafka.Writer
-	topic string
+	writer    u.Publisher
+	errWriter u.Publisher
 }
 
-func NewGRPCReaderService(conn *kafka.Writer, topic string) *grpcReaderService {
+func NewGRPCReaderService(kafka *kafka.Writer, topic string) *grpcReaderService {
 	return &grpcReaderService{
-		conn:  conn,
-		topic: topic,
+		writer:    u.GetPublisher(kafka, topic),
+		errWriter: u.GetPublisher(kafka, ERR_TOPIC),
 	}
 }
 
 func (r *grpcReaderService) ReadAndPublish(stream rs.Reader_ReadAndPublishServer) error {
+	log.Println("starting to read and publish")
 	var csvFile []byte
 	for {
 		req, err := stream.Recv()
@@ -92,12 +95,22 @@ func (r *grpcReaderService) ReadAndPublish(stream rs.Reader_ReadAndPublishServer
 			return err
 		}
 
-		csvFile = append(csvFile, req.Csv...)
+		csvFile = append(csvFile, req.GetCsv()...)
 	}
 
-	rdr := csv.NewReader(bytes.NewReader(csvFile))
+	log.Println("received csv, publishing...")
 
-	err := csvToKafka(rdr, r.conn, r.topic)
+	rdr := csv.NewReader(bytes.NewBuffer(csvFile))
+
+	rowOne, err := rdr.Read()
+
+	if err != nil || rowOne[0] != "url" {
+		log.Println("error reading first row")
+	}
+
+	err = csvToKafka(rdr, r.writer, r.errWriter)
+
+	log.Println(err)
 
 	if err != nil {
 		return err
@@ -108,13 +121,15 @@ func (r *grpcReaderService) ReadAndPublish(stream rs.Reader_ReadAndPublishServer
 	})
 }
 
-func csvToKafka(r *csv.Reader, conn *kafka.Writer, topic string) error {
+func csvToKafka(r *csv.Reader, pub, pubErr u.Publisher) error {
 	hash := &sync.Map{}
 	for {
 		record, err := r.Read()
 		if err == io.EOF {
 			break
 		}
+
+		log.Println("read", record)
 
 		if err != nil {
 			log.Println("error reading row: ", err)
@@ -124,19 +139,11 @@ func csvToKafka(r *csv.Reader, conn *kafka.Writer, topic string) error {
 		if _, ok := hash.LoadOrStore(record[0], true); ok {
 			continue
 		}
-		err = conn.WriteMessages(context.Background(), kafka.Message{
-			Topic: topic,
-			Key:   []byte(record[0]),
-			Value: []byte(record[0]),
-		})
+		err = pub([]byte(record[0]), []byte(record[0]), nil)
 
 		if err != nil {
-			log.Println("error writing to kafka: ", err)
-			conn.WriteMessages(context.Background(), kafka.Message{
-				Topic: topic,
-				Key:   []byte(record[0]),
-				Value: []byte(record[0]),
-			})
+			log.Println("error publishing to kafka: ", err)
+			return err
 		}
 	}
 

@@ -111,7 +111,8 @@ func contains(arr []string, val string) bool {
 	return false
 }
 
-func GetMD5Hash(text []byte) string {
-	hash := md5.Sum(text)
-	return hex.EncodeToString(hash[:])
+func GetMD5(url []byte) string {
+	hasher := md5.New()
+	hasher.Write(url)
+	return hex.EncodeToString(hasher.Sum(nil))
 }

@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
+	u "github.com/berkeli/immersive-go/batch-processing/utils"
 	"github.com/segmentio/kafka-go"
+	"golang.org/x/sync/semaphore"
 )
 
 const (
@@ -29,6 +30,9 @@ type Config struct {
 
 type DownloadService struct {
 	config *Config
+
+	pub    u.Publisher
+	errPub u.Publisher
 }
 
 func NewDownloadService(config *Config) *DownloadService {
@@ -46,15 +50,14 @@ func (ds *DownloadService) Run(ctx context.Context) error {
 	})
 	defer r.Close()
 
-	w, err := kafka.DialContext(ctx, "tcp", ds.config.KafkaBrokers[0])
-
-	if err != nil {
-		return err
+	kafka := &kafka.Writer{
+		Addr: kafka.TCP(ds.config.KafkaBrokers...),
 	}
 
-	defer w.Close()
+	ds.pub = u.GetPublisher(kafka, ds.config.OutTopic)
+	ds.errPub = u.GetPublisher(kafka, ERR_TOPIC)
 
-	w.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	sem := semaphore.NewWeighted(10)
 
 	for {
 		m, err := r.ReadMessage(ctx)
@@ -63,50 +66,33 @@ func (ds *DownloadService) Run(ctx context.Context) error {
 			continue
 		}
 
-		filePath := fmt.Sprintf("%s/%s", ds.config.OutputPath, GetMD5Hash(m.Value))
+		sem.Acquire(ctx, 1)
 
-		f, err := os.Create(filePath)
-
-		if err != nil {
-			log.Println("Failed to create file for ", string(m.Value), " error: ", err)
-			w.WriteMessages(kafka.Message{
-				Topic: ERR_TOPIC,
-				Key:   m.Key,
-				Value: []byte(fmt.Sprintf("Failed to create file, error: %s", err)),
-			})
-			continue
-		}
-
-		hash, ext, err := DownloadWithBackoff(string(m.Value), ds.config.MaxRetries, f)
-
-		if err != nil {
-			log.Println("Failed to download ", string(m.Value), " error: ", err)
-			w.WriteMessages(kafka.Message{
-				Topic: ERR_TOPIC,
-				Key:   m.Key,
-				Value: []byte(fmt.Sprintf("Failed to download, error: %s", err)),
-			})
-			continue
-		}
-
-		f.Close()
-
-		err = os.Rename(filePath, fmt.Sprintf("%s/%s.%s", ds.config.OutputPath, hash, ext))
-		fmt.Println("renamed file to ", fmt.Sprintf("%s/%s.%s", ds.config.OutputPath, hash, ext))
-
-		if err != nil {
-			log.Println("Failed to rename file ", string(m.Value), " error: ", err)
-			w.WriteMessages(kafka.Message{
-				Topic: ds.config.OutTopic,
-				Key:   m.Key,
-				Value: []byte(fmt.Sprintf("%s.%s", GetMD5Hash(m.Value), ext)),
-			})
-		} else {
-			w.WriteMessages(kafka.Message{
-				Topic: ds.config.OutTopic,
-				Key:   m.Key,
-				Value: []byte(fmt.Sprintf("%s.%s", hash, ext)),
-			})
-		}
+		go ds.processUrl(m.Value, sem)
 	}
+}
+
+func (ds *DownloadService) processUrl(url []byte, sem *semaphore.Weighted) {
+	defer sem.Release(1)
+	fmt.Println("Downloading from url: ", string(url))
+
+	inputPath := fmt.Sprintf("%s/%s", ds.config.OutputPath, GetMD5(url))
+	file, err := os.Create(inputPath)
+
+	if err != nil {
+		log.Printf("failed to create file: %v", err)
+		ds.errPub(url, []byte(fmt.Sprintf("failed to create file: %v", err)), nil)
+	}
+
+	hash, ext, err := DownloadWithBackoff(string(url), ds.config.MaxRetries, file)
+
+	if err != nil {
+		log.Println("Error downloading file: ", err)
+		os.Remove(inputPath)
+		ds.errPub(url, []byte(fmt.Sprintf("error downloading image: %v", err)), nil)
+	}
+
+	os.Rename(inputPath, fmt.Sprintf("%s/%s.%s", ds.config.OutputPath, hash, ext))
+
+	ds.pub(url, []byte(fmt.Sprintf("%s.%s", hash, ext)), nil)
 }

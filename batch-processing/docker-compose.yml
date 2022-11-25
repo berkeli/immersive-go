@@ -1,4 +1,5 @@
 version: '3'
+
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.3.0
@@ -24,13 +25,58 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test:
+        ["CMD", "kafka-topics.sh", "--list", "--zookeeper", "zookeeper:2181"]
+      interval: 5s
+      timeout: 10s
+      retries: 4
 
   # reader:
+  #   build:
+  #     context: .
+  #     dockerfile: go.Dockerfile
+  #     target: reader_server
+  #   container_name: reader
+  #   restart: always
+  #   ports:
+  #     - "50051:50051"
+  #   env_file:
+  #     - .env
 
   # downloader:
+  #   build:
+  #     context: .
+  #     dockerfile: go.Dockerfile
+  #     target: downloader
+  #   container_name: downloader
+  #   restart: always
+  #   volumes:
+  #     - ./outputs:/outputs
+  #   env_file:
+  #     - .env
 
   # converter:
+  #   build:
+  #     context: .
+  #     target: run
+  #   restart: always
+  #   container_name: converter
+  #   volumes:
+  #     - ./outputs:/outputs
+  #   env_file:
+  #     - .env
 
   # uploader:
+  #   build:
+  #     context: .
+  #     dockerfile: go.Dockerfile
+  #     target: uploader
+  #   restart: always
+  #   container_name: uploader
+  #   volumes:
+  #     - ./outputs:/outputs
+  #   env_file:
+  #     - .env
 
-  # writer:
+  # # writer:

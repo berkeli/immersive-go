@@ -34,6 +34,16 @@ reader_server:
 downloader:
 	go run ./cmd/downloader
 
+converter:
+	go run ./cmd/converter
+
+uploader:
+	AWS_ROLE_ARN="arn:aws:iam::297880250375:role/GoCourseLambdaUserReadWriteS3" \
+	AWS_REGION=eu-west-2 \
+	AWS_PROFILE=cyfplus \
+	S3_BUCKET="batch-processing-berkeli" \
+	go run ./cmd/uploader
+
 reader:
 	go run ./cmd/read --input inputs/large-input.csv --addr localhost:50051
 

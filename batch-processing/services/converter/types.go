@@ -1,4 +1,4 @@
-package main
+package converter
 
 import "gopkg.in/gographics/imagick.v2/imagick"
 

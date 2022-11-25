@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
 
 	ds "github.com/berkeli/immersive-go/batch-processing/services/downloader"
 )
@@ -20,5 +21,9 @@ func main() {
 		OutputPath:   "outputs",
 	})
 
-	ds.Run(context.Background())
+	err := ds.Run(context.Background())
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }

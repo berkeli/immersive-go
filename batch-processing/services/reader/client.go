@@ -39,7 +39,7 @@ func (rc *ReaderClient) Run(ctx context.Context) error {
 	stream, err := c.ReadAndPublish(ctx)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("could not read and publish: %w", err)
 	}
 
 	f, err := os.Open(rc.InputFile)
@@ -64,7 +64,7 @@ func (rc *ReaderClient) Run(ctx context.Context) error {
 		err = stream.Send(&rs.ReaderRequest{Csv: line})
 
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("could not send csv", err)
 		}
 	}
 

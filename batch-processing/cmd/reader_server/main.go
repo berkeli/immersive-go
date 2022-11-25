@@ -13,5 +13,9 @@ func main() {
 		Port:         50051,
 	})
 
-	s.Run(context.Background())
+	err := s.Run(context.Background())
+
+	if err != nil {
+		panic(err)
+	}
 }

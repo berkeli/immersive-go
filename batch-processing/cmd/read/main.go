@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
 	"os"
 
 	"github.com/berkeli/immersive-go/batch-processing/services/reader"
@@ -20,5 +21,9 @@ func main() {
 
 	rc := reader.NewReaderClient(*addr, *inputFilepath)
 
-	rc.Run(context.Background())
+	err := rc.Run(context.Background())
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }

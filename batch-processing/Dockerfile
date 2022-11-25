@@ -46,12 +46,13 @@ COPY go.sum ./
 
 RUN go mod download
 
-COPY *.go ./
-COPY inputs /inputs
+COPY utils ./utils
+COPY services ./services
+COPY cmd ./cmd
 RUN mkdir -p /outputs
 
 # This is required for test and run, but for develop it ensures we have a build cache
-RUN go build -o /out
+RUN go build -o /out ./cmd/converter/
 
 ##
 ## TEST

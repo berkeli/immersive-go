@@ -27,5 +27,6 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/segmentio/kafka-go v0.4.38
+	golang.org/x/sync v0.1.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
