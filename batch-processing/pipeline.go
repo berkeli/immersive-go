@@ -191,7 +191,7 @@ func (p *Pipeline) Upload(wg *sync.WaitGroup, in <-chan *ConvertOut, out chan *U
 			continue
 		}
 
-		err = UploadToS3WithBackoff(file, row.AwsKey(), p.config.Aws, p.maxRetries)
+		s3url, err := UploadToS3WithBackoff(file, row.AwsKey(), p.config.Aws, p.maxRetries)
 
 		if err != nil {
 			p.errOut <- &ErrOut{
@@ -207,7 +207,7 @@ func (p *Pipeline) Upload(wg *sync.WaitGroup, in <-chan *ConvertOut, out chan *U
 			Url:   row.Url,
 			Key:   row.Key,
 			Ext:   row.Ext,
-			S3url: fmt.Sprintf("https://%s.s3.amazonaws.com/%s", p.config.Aws.s3bucket, row.AwsKey()),
+			S3url: s3url,
 		}
 	}
 }
@@ -216,7 +216,9 @@ func WriteSuccess(done chan bool, in <-chan *UploadOut, OutputFilepath string) {
 
 	f, err := os.Create(OutputFilepath)
 	if err != nil {
-		log.Fatalf("error creating output file: %v", err)
+		log.Printf("error creating output file: %v\n", err)
+		done <- true
+		return
 	}
 
 	w := csv.NewWriter(f)
@@ -243,7 +245,9 @@ func WriteError(done chan bool, in <-chan *ErrOut, ErrorFilepath string) {
 
 	f, err := os.Create(ErrorFilepath)
 	if err != nil {
-		log.Fatalf("error creating error file: %v", err)
+		log.Printf("error creating failed outputs file: %v|n", err)
+		done <- true
+		return
 	}
 
 	w := csv.NewWriter(f)

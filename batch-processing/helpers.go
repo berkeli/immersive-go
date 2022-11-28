@@ -154,7 +154,7 @@ func OpenCSVFile(filename string) (*csv.Reader, error) {
 	return csvReader, nil
 }
 
-func UploadToS3WithBackoff(file *os.File, key string, a *AWSConfig, maxRetries uint64) error {
+func UploadToS3WithBackoff(file *os.File, key string, a *AWSConfig, maxRetries uint64) (string, error) {
 	operation := func() error {
 		_, err := a.PutObject(&s3.PutObjectInput{
 			Bucket: &a.s3bucket,
@@ -176,7 +176,7 @@ func UploadToS3WithBackoff(file *os.File, key string, a *AWSConfig, maxRetries u
 
 	err := backoff.RetryNotify(operation, b, notify)
 
-	return err
+	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", a.s3bucket, key), err
 }
 
 func InputPath(key, ext string) string {

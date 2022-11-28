@@ -227,6 +227,12 @@ func TestPipeline_Download(t *testing.T) {
 				gotArr = append(gotArr, v)
 			}
 
+			t.Cleanup(func() {
+				for _, outRow := range gotArr {
+					os.Remove(InputPath(outRow.Key, outRow.Ext))
+				}
+			})
+
 			require.Equal(t, len(gotArr), len(test.ExpectedOutput))
 
 			for _, downloadRow := range gotArr {
@@ -235,11 +241,6 @@ func TestPipeline_Download(t *testing.T) {
 
 			require.ElementsMatch(t, gotArr, test.ExpectedOutput)
 
-			t.Cleanup(func() {
-				for _, outRow := range gotArr {
-					os.Remove(InputPath(outRow.Key, outRow.Ext))
-				}
-			})
 		})
 	}
 }
@@ -464,7 +465,7 @@ func TestPipeline_Upload(t *testing.T) {
 			convertOut := make(chan *ConvertOut, len(test.In))
 			uploadOut := make(chan *UploadOut, len(test.In))
 
-			defer t.Cleanup(func() {
+			t.Cleanup(func() {
 				call = &s3.PutObjectInput{}
 			})
 
