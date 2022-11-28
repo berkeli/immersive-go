@@ -1,4 +1,16 @@
-services: 
+services:
+
+  consul:
+    image: consul:1.9.0
+    command: ["consul","agent","-config-file=/config/consul.hcl","-config-dir=/config"]
+    volumes:
+      - "./consul:/config"
+    ports:
+      - 8500:8500
+    networks:
+      vpcbr:
+        ipv4_address: 10.5.0.2
+
   gomulti-postgres:
     image: postgres:13.0-alpine
     container_name: gomulti-postgres
@@ -13,6 +25,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  psql-proxy:
+    image: joatmon08/consul-envoy:v1.9.0-v1.16.0
+    restart: always
+    platform: linux/x86_64
+    environment:
+      CONSUL_HTTP_ADDR: 10.5.0.2:8500
+      CONSUL_GRPC_ADDR: 10.5.0.2:8502
+      SERVICE_CONFIG: /config/web.hcl
+      CENTRAL_CONFIG_DIR: /central_config
+    volumes:
+      - "./service_config:/config"
+      - "./central_config:/central_config"
+    command: ["consul", "connect", "envoy","-sidecar-for", "web"]
+    network_mode: "service:gomulti-postgres"
 
   gomulti-api:
     depends_on:
