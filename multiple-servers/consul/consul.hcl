@@ -19,7 +19,7 @@ connect {
   enabled = true
 }
 
-advertise_addr                = "10.5.0.2"
+advertise_addr                = "10.10.0.2"
 enable_central_service_config = true
 
 ui_config {
@@ -27,6 +27,6 @@ ui_config {
 
   metrics_provider = "prometheus"
   metrics_proxy = {
-    base_url = "http://10.5.0.6:9090"
+    base_url = "http://10.10.0.9:9090"
   }
 }
