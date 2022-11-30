@@ -15,6 +15,12 @@ service {
                 tcp      = "10.10.0.3:20000"
                 interval = "10s"
             }
+
+            proxy {
+                config {
+                    protocol = "tcp"
+                }   
+            }
         }
     }
 }

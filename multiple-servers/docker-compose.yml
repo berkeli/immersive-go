@@ -9,9 +9,11 @@ networks:
 services:
   consul:
     image: consul:1.9.0
-    command: ["consul","agent","-config-file=/config/consul.hcl"]
+    command: ["consul","agent","-config-file=/config/consul.hcl", "-config-dir=/config"]
     volumes:
-      - "./consul:/config"
+      - "./consul/server_config:/config"
+    environment:
+      CENTRAL_CONFIG_DIR: /config/central_config
     ports:
       - 8500:8500
     networks:
@@ -20,7 +22,6 @@ services:
 
   psql:
     image: postgres:13.0-alpine
-    container_name: gomulti-postgres
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -37,9 +38,8 @@ services:
       retries: 5
   psql-exporter:
     image: quay.io/prometheuscommunity/postgres-exporter
-    container_name: gomulti-postgres-exporter
     environment:
-      - DATA_SOURCE_NAME=postgresql://postgres:postgres@psql:5432/go_server_db?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://postgres:postgres@localhost:5432/go_server_db?sslmode=disable
     network_mode: "service:psql"
   psql-proxy:
     image: joatmon08/consul-envoy:v1.9.0-v1.16.0
@@ -64,9 +64,7 @@ services:
       dockerfile: api.Dockerfile
     container_name: api
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@psql:5432/go_server_db?sslmode=disable
-    ports:
-      - 8081:8081
+      - DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/go_server_db?sslmode=disable
     networks:
       go-multi:
         ipv4_address: 10.10.0.5
@@ -88,11 +86,11 @@ services:
     depends_on:
       api:
         condition: service_started
+    ports:
+      - 8082:8082
     build:
       context: .
       dockerfile: static.Dockerfile
-    ports:
-      - 8082:8082
     networks:
       go-multi:
         ipv4_address: 10.10.0.6

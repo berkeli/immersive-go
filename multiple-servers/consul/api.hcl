@@ -26,6 +26,7 @@ service {
           local_bind_port    = 5432
 
           config {
+            protocol = "tcp"
             connect_timeout_ms = 5000
             envoy_prometheus_bind_addr = "10.10.0.5:9102"
             limits {

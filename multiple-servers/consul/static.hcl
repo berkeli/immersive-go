@@ -27,7 +27,7 @@ service {
 
           config {
             connect_timeout_ms = 5000
-            envoy_prometheus_bind_addr = "10.10.0.6:9102"
+            
             limits {
               max_connections         = 3
               max_pending_requests    = 4
