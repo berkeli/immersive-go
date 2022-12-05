@@ -1,39 +1,166 @@
-services: 
-  gomulti-postgres:
+version: "3.9"
+networks:
+  go-multi:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/16
+
+services:
+  consul:
+    image: consul:1.9.0
+    command: ["consul","agent","-config-file=/config/consul.hcl", "-config-dir=/config"]
+    volumes:
+      - "./consul/server_config:/config"
+    environment:
+      CENTRAL_CONFIG_DIR: /config/central_config
+    ports:
+      - 8500:8500
+    networks:
+      go-multi:
+        ipv4_address: 10.10.0.2
+
+  psql:
     image: postgres:13.0-alpine
-    container_name: gomulti-postgres
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=go_server_db
     volumes:
       - ./migrations.sql:/docker-entrypoint-initdb.d/migrations.sql:ro
+    networks:
+      go-multi:
+        ipv4_address: 10.10.0.3
     healthcheck:
       test: ["CMD-SHELL", "pg_isready --username postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+  psql-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://postgres:postgres@localhost:5432/go_server_db?sslmode=disable
+    network_mode: "service:psql"
+  psql-proxy:
+    image: joatmon08/consul-envoy:v1.9.0-v1.16.0
+    restart: always
+    platform: linux/x86_64
+    environment:
+      CONSUL_HTTP_ADDR: 10.10.0.2:8500
+      CONSUL_GRPC_ADDR: 10.10.0.2:8502
+      SERVICE_CONFIG: /config/psql.hcl
+      CENTRAL_CONFIG_DIR: /config/central_config
+    volumes:
+      - "./consul:/config"
+    command: ["consul", "connect", "envoy","-sidecar-for", "psql"]
+    network_mode: "service:psql"
 
-  gomulti-api:
+  api:
     depends_on:
-      gomulti-postgres:
+      psql:
         condition: service_healthy
     build:
       context: .
       dockerfile: api.Dockerfile
-    container_name: gomulti-api
+    container_name: api
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@gomulti-postgres:5432/go_server_db
-    ports:
-      - 8081:8081
+      - DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/go_server_db?sslmode=disable
+    networks:
+      go-multi:
+        ipv4_address: 10.10.0.5
+  api-proxy:
+    image: joatmon08/consul-envoy:v1.9.0-v1.16.0
+    restart: always
+    platform: linux/x86_64
+    environment:
+      CONSUL_HTTP_ADDR: 10.10.0.2:8500
+      CONSUL_GRPC_ADDR: 10.10.0.2:8502
+      SERVICE_CONFIG: /config/api.hcl
+      CENTRAL_CONFIG_DIR: /config/central_config
+    volumes:
+      - "./consul:/config"
+    command: ["consul", "connect", "envoy","-sidecar-for", "api"]
+    network_mode: "service:api"
   
-  gomulti-static:
-    container_name: gomulti-static
+  static:
     depends_on:
-      gomulti-api:
+      api:
+        condition: service_started
+    ports:
+      - 8082:8082
+    build:
+      context: .
+      dockerfile: static.Dockerfile
+    environment:
+      - APP=static-1
+    networks:
+      go-multi:
+        ipv4_address: 10.10.0.6
+    command: ["/app/static-server", "-path", "/app/assets", "-port", "8082"]
+  static-proxy:
+    image: joatmon08/consul-envoy:v1.9.0-v1.16.0
+    restart: always
+    platform: linux/x86_64
+    environment:
+      CONSUL_HTTP_ADDR: 10.10.0.2:8500
+      CONSUL_GRPC_ADDR: 10.10.0.2:8502
+      SERVICE_CONFIG: /config/static.hcl
+      CENTRAL_CONFIG_DIR: /config/central_config
+    volumes:
+      - "./consul:/config"
+    command: ["consul", "connect", "envoy","-sidecar-for", "static"]
+    network_mode: "service:static"
+
+  static_2:
+    depends_on:
+      api:
         condition: service_started
     build:
       context: .
       dockerfile: static.Dockerfile
+    environment:
+      - APP=static-2
+    networks:
+      go-multi:
+        ipv4_address: 10.10.0.66
+    command: ["/app/static-server", "-path", "/app/assets", "-port", "8083"]
+  static_2-proxy:
+    image: joatmon08/consul-envoy:v1.9.0-v1.16.0
+    restart: always
+    platform: linux/x86_64
+    environment:
+      CONSUL_HTTP_ADDR: 10.10.0.2:8500
+      CONSUL_GRPC_ADDR: 10.10.0.2:8502
+      SERVICE_CONFIG: /config/static_2.hcl
+      CENTRAL_CONFIG_DIR: /config/central_config
+    volumes:
+      - "./consul:/config"
+    command: ["consul", "connect", "envoy","-sidecar-for", "static_2"]
+    network_mode: "service:static"
+
+  gateway:
+    image: joatmon08/consul-envoy:v1.9.0-v1.16.0
+    restart: always
+    platform: linux/x86_64
+    environment:
+      CONSUL_HTTP_ADDR: 10.10.0.2:8500
+      CONSUL_GRPC_ADDR: 10.10.0.2:8502
+      CENTRAL_CONFIG_DIR: /config/central_config
+    volumes:
+      - "./consul:/config"
+    command: ["consul", "connect", "envoy","-gateway=ingress", "-service", "public-ingress", "-address", "{{ GetInterfaceIP \"eth0\" }}:8082"]
+    # ports:
+    #   - 8082:8082
+    networks:
+      go-multi:
+        ipv4_address: 10.10.0.99
+
+  prometheus:
+    image: prom/prometheus
     ports:
-      - 8082:8082
+      - 9090:9090
+    volumes:
+      - "./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml"
+    networks:
+      go-multi:
+        ipv4_address: 10.10.0.9

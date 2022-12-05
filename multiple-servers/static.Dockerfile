@@ -16,4 +16,4 @@ FROM gcr.io/distroless/base-debian10
 COPY --from=build /app/static-server /app/static-server
 COPY assets /app/assets
 
-ENTRYPOINT ["/app/static-server", "-path", "/app/assets"]
+CMD ["/app/static-server", "-path", "/app/assets"]

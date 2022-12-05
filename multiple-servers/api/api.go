@@ -24,13 +24,16 @@ type Server struct {
 func Run(c Config) error {
 	conn, err := pgx.Connect(context.Background(), c.DB_URL)
 	if err != nil {
-		return err
+		// return err
+		log.Println(err)
 	}
 	defer conn.Close(context.Background())
 
 	s := Server{db: conn}
 
 	http.HandleFunc("/", s.IndexHandler)
+	http.HandleFunc("/api", s.IndexHandler)
+
 	http.HandleFunc("/images.json", s.ImagesHandler)
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.Port), nil)

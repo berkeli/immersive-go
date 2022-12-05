@@ -22,6 +22,11 @@ func Run(c Config) error {
 	handler := http.FileServer(http.Dir(path))
 
 	http.Handle("/", handler)
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		app := os.Getenv("APP")
+		w.Write([]byte(app))
+	})
 
 	err = http.ListenAndServe(fmt.Sprintf(":%d", c.Port), nil)
 
