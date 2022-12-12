@@ -96,8 +96,12 @@ func CreateTopics(admin sarama.ClusterAdmin, cmds []types.Command) error {
 			ReplicationFactor: 1,
 		}, false)
 
-		if errors.Is(err, sarama.ErrTopicAlreadyExists) {
-			admin.CreatePartitions(topicName, *partitions, nil, false)
+		if err != nil {
+			if errors.Is(err, sarama.ErrTopicAlreadyExists) {
+				admin.CreatePartitions(topicName, *partitions, nil, false)
+			} else {
+				return err
+			}
 		}
 	}
 
