@@ -48,7 +48,7 @@ func Test_Command(t *testing.T) {
 				Command:     "echo hello world",
 				MaxRetries:  3,
 			},
-			wantErr: fmt.Errorf("cluster 'cluster-c' is not recognized"),
+			wantErr: fmt.Errorf("cluster 'cluster-c' is not recognised"),
 		},
 		"valid Command should not return error": {
 			cmd: Command{
