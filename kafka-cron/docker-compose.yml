@@ -83,6 +83,17 @@ services:
       KAFKA_CLUSTERS_0_METRICS_PORT: 11001
       KAFKA_CLUSTERS_0_METRICS_TYPE: PROMETHEUS
 
+  setup:
+    build:
+      context: .
+      dockerfile: ./setup/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./cron.yaml:/cron.yaml
+    command: ["/build", "--configPath", "/cron.yaml", "--brokerList", "kafka:29092"]
+
   producer:
     build:
       context: .
@@ -92,7 +103,7 @@ services:
         condition: service_healthy
     volumes:
       - ./cron.yaml:/cron.yaml
-    command: ["/build", "--cronPath", "/cron.yaml", "--brokerList", "kafka:29092", "--partitions", "2"]
+    command: ["/build", "--configPath", "/cron.yaml", "--brokerList", "kafka:29092"]
   
   cluster-a:
     depends_on:
@@ -136,9 +147,9 @@ services:
     build:
       context: .
       dockerfile: ./consumer/Dockerfile
-    command: ["/build", "--topic", "jobs-cluster-b", "--brokerList", "kafka:29092", "--partition", "0"]
+    command: ["/build", "--topic", "jobs-cluster-b", "--brokerList", "kafka:29092", "--retryTopic", "jobs-cluster-b-retries"]
 
-  cluster-b-2:
+  cluster-b-retries:
     depends_on:
       kafka:
         condition: service_healthy
@@ -147,7 +158,7 @@ services:
     build:
       context: .
       dockerfile: ./consumer/Dockerfile
-    command: ["/build", "--topic", "jobs-cluster-b", "--brokerList", "kafka:29092", "--partition", "1"]
+    command: ["/build", "--topic", "jobs-cluster-b-retries", "--brokerList", "kafka:29092", "--retryTopic", "jobs-cluster-b-retries"]
   
   alertmanager:
     container_name: alertmanager

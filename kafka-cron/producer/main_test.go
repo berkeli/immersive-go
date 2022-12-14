@@ -18,8 +18,6 @@ func Test_PublishMessages(t *testing.T) {
 
 	clusters := []string{"cluster-a", "cluster-b"}
 	wantMsg := "hello world"
-	prefix := "jobs"
-	topicPrefix = &prefix
 
 	prod.ExpectSendMessageWithMessageCheckerFunctionAndSucceed(func(msg *sarama.ProducerMessage) error {
 		bytes, err := msg.Value.Encode()
@@ -155,7 +153,7 @@ cron:
 		t.Fatal(err)
 	}
 
-	got, err := ReadConfig(f.Name())
+	got, err := ReadCrons(f.Name())
 
 	if err != nil {
 		t.Fatal(err)

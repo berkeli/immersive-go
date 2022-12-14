@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -13,16 +12,15 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/berkeli/kafka-cron/types"
-	"github.com/goccy/go-yaml"
+	"github.com/berkeli/kafka-cron/utils"
 	"github.com/google/uuid"
+	"github.com/hashicorp/go-multierror"
 	"github.com/robfig/cron/v3"
 )
 
 var (
-	brokerList  = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
-	topicPrefix = kingpin.Flag("topicPrefix", "Topic prefix, e.g. jobs will create topics for each cluster in the format jobs-cluster-a").Default("jobs").String()
-	cronPath    = kingpin.Flag("cronPath", "Path to cron file").Default("./cron.yaml").String()
-	partitions  = kingpin.Flag("partitions", "Number of partitions").Default("1").Int32()
+	brokerList = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
+	configPath = kingpin.Flag("configPath", "Path to config file").Default("./cron.yaml").String()
 )
 
 func main() {
@@ -51,18 +49,11 @@ func main() {
 			log.Panic(err)
 		}
 	}()
-	cmds, err := ReadConfig(*cronPath)
+	cmds, err := ReadCrons(*configPath)
 
 	if err != nil {
 		log.Panic(err)
 	}
-
-	err = CreateTopics(admin, cmds)
-
-	if err != nil {
-		log.Panic(err)
-	}
-
 	err = ScheduleJobs(producer, cmds)
 
 	if err != nil {
@@ -76,51 +67,39 @@ func main() {
 	<-sigs
 }
 
-func CreateTopics(admin sarama.ClusterAdmin, cmds []types.Command) error {
-	// Create topics for all unique clusters
-	clusters := make([]string, 0)
+func ReadCrons(path string) ([]types.Command, error) {
+	cnf, err := utils.ReadConfig(path)
 
-	for _, cmd := range cmds {
-		for _, cluster := range cmd.Clusters {
-			if !contains(clusters, cluster) {
-				clusters = append(clusters, cluster)
-			}
-		}
+	if err != nil {
+		return nil, err
+	}
+	// with golang unset value defaults to 0 so we need to set it to 3
+	// not ideal, but there's a comment to set max retries to -1 to disable retries
+	if cnf.MaxAllowedRetries == 0 {
+		cnf.MaxAllowedRetries = 3
 	}
 
-	for _, cluster := range clusters {
-		topicName := fmt.Sprintf("%s-%s", *topicPrefix, cluster)
+	var validationErrors error
 
-		err := admin.CreateTopic(topicName, &sarama.TopicDetail{
-			NumPartitions:     *partitions,
-			ReplicationFactor: 1,
-		}, false)
+	allowedClusters := make(map[string]struct{})
+
+	for _, cluster := range cnf.Clusters {
+		allowedClusters[cluster.Name] = struct{}{}
+	}
+
+	for _, cmd := range cnf.Crons {
+		err := cmd.Validate(allowedClusters, cnf.MaxAllowedRetries)
 
 		if err != nil {
-			if errors.Is(err, sarama.ErrTopicAlreadyExists) {
-				admin.CreatePartitions(topicName, *partitions, nil, false)
-			} else {
-				return err
-			}
+			multierror.Append(err, validationErrors)
 		}
 	}
 
-	return nil
-}
+	if validationErrors != nil {
+		return nil, validationErrors
+	}
 
-func ReadConfig(path string) ([]types.Command, error) {
-	var cmds struct {
-		Cron []types.Command `json:"cron" yaml:"cron"`
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	err = yaml.Unmarshal(data, &cmds)
-	if err != nil {
-		return nil, err
-	}
-	return cmds.Cron, nil
+	return cnf.Crons, nil
 }
 
 func ScheduleJobs(prod sarama.SyncProducer, cmds []types.Command) error {
@@ -147,8 +126,9 @@ func ScheduleJobs(prod sarama.SyncProducer, cmds []types.Command) error {
 }
 
 func PublishMessages(prod sarama.SyncProducer, msg string, clusters []string) error {
+	getTopic := utils.WithTopicPrefix()
 	for _, cluster := range clusters {
-		topic := fmt.Sprintf("%s-%s", *topicPrefix, cluster)
+		topic := getTopic(cluster)
 		msg := &sarama.ProducerMessage{
 			Topic: topic,
 			Key:   sarama.StringEncoder(uuid.New().String()),
@@ -180,13 +160,4 @@ func (c *CommandPublisher) Run() {
 	if err != nil {
 		log.Println(fmt.Errorf("error publishing command: %v", err))
 	}
-}
-
-func contains(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
 }
