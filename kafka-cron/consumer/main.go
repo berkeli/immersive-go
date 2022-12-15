@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
@@ -77,8 +78,10 @@ func main() {
 					log.Println(err)
 					ErrorCounter.WithLabelValues(*topic, "json-unmarshall").Inc()
 				}
-				// record time in queue
-				JobQueueTime.WithLabelValues(*topic, cmd.Description).Observe(float64(msg.Timestamp.UnixNano()))
+
+				duration := time.Since(msg.Timestamp)
+
+				JobQueueTime.WithLabelValues(*topic, cmd.Description).Observe(duration.Seconds())
 				processCommand(producer, cmd)
 			case <-signals:
 				chDone <- true
