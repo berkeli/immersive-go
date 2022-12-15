@@ -11,6 +11,7 @@ import (
 	"github.com/berkeli/kafka-cron/types"
 	"github.com/berkeli/kafka-cron/utils"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/semaphore"
 )
 
 func Test_ExecuteCommand(t *testing.T) {
@@ -49,7 +50,9 @@ func Test_ProcessCommand(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		processCommand(producer, cmd, wg)
+		sem := semaphore.NewWeighted(1)
+
+		processCommand(producer, cmd, wg, sem)
 	})
 
 	t.Run("erroneous command should result in retry", func(t *testing.T) {
@@ -97,6 +100,8 @@ func Test_ProcessCommand(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
 
-		processCommand(producer, cmd, wg)
+		sem := semaphore.NewWeighted(1)
+
+		processCommand(producer, cmd, wg, sem)
 	})
 }

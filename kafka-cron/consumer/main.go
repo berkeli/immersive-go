@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"sync"
+	"syscall"
 
+	"golang.org/x/sync/semaphore"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
 	"encoding/json"
@@ -64,6 +67,10 @@ func main() {
 	signal.Notify(signals, os.Interrupt)
 	chDone := make(chan bool)
 	wgWorkers := sync.WaitGroup{}
+
+	// Max concurrent jobs
+	sem := semaphore.NewWeighted(1)
+
 	go func() {
 		for {
 			select {
@@ -76,8 +83,8 @@ func main() {
 					log.Println(err)
 				}
 				wgWorkers.Add(1)
-				// TODO: Add a worker pool with semaphore? What if jobs are dependent on each other?
-				processCommand(producer, cmd, &wgWorkers)
+				sem.Acquire(context.Background(), 1)
+				go processCommand(producer, cmd, &wgWorkers, sem)
 			case <-signals:
 				chDone <- true
 				return
@@ -89,8 +96,9 @@ func main() {
 	wgWorkers.Wait()
 }
 
-func processCommand(producer sarama.SyncProducer, cmd types.Command, wg *sync.WaitGroup) {
+func processCommand(producer sarama.SyncProducer, cmd types.Command, wg *sync.WaitGroup, sem *semaphore.Weighted) {
 	defer wg.Done()
+	defer sem.Release(1)
 	log.Println("Starting a job for: ", cmd.Description)
 	//metrics
 	timer := prometheus.NewTimer(JobDuration.WithLabelValues(*topic, cmd.Description))
@@ -131,6 +139,9 @@ func processCommand(producer sarama.SyncProducer, cmd types.Command, wg *sync.Wa
 
 func executeCommand(command string) (string, error) {
 	cmd := exec.Command("sh", "-c", command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
