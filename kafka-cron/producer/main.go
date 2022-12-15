@@ -110,27 +110,35 @@ func ScheduleJobs(prod sarama.SyncProducer, cmds []types.Command) error {
 		}
 
 		c.Schedule(sch, &job)
-		ScheduledCrons.Inc()
+
+		CronJobsInFlight.Inc()
 	}
 	c.Start()
 	return nil
 }
 
-func PublishMessages(prod sarama.SyncProducer, msg string, clusters []string) error {
+func PublishMessages(prod sarama.SyncProducer, c *types.Command, clusters []string) error {
 	getTopic := utils.WithTopicPrefix()
+
+	msgString, err := json.Marshal(&c)
+	if err != nil {
+		ErrorCounter.WithLabelValues("producer", "json-marshal").Inc()
+		return err
+	}
+
 	for _, cluster := range clusters {
 		topic := getTopic(cluster)
 		msg := &sarama.ProducerMessage{
 			Topic: topic,
 			Key:   sarama.StringEncoder(uuid.New().String()),
-			Value: sarama.StringEncoder(msg),
+			Value: sarama.StringEncoder(msgString),
 		}
 		_, _, err := prod.SendMessage(msg)
 		if err != nil {
-			QueuedJobs.WithLabelValues(topic, "error").Inc()
+			ErrorCounter.WithLabelValues(topic, "publish-message").Inc()
 			return err
 		}
-		QueuedJobs.WithLabelValues(topic, "success").Inc()
+		JobsPublished.WithLabelValues(topic, c.Description).Inc()
 	}
 	return nil
 }
@@ -141,12 +149,9 @@ type CommandPublisher struct {
 }
 
 func (c *CommandPublisher) Run() {
-	fmt.Println("Running command: ", c.Description)
-	msgString, err := json.Marshal(&c)
-	if err != nil {
-		log.Println(fmt.Errorf("error marshalling command: %v", err))
-	}
-	err = PublishMessages(c.publisher, string(msgString), c.Clusters)
+	fmt.Println("Publishing command: ", c.Description)
+
+	err := PublishMessages(c.publisher, &c.Command, c.Clusters)
 
 	if err != nil {
 		log.Println(fmt.Errorf("error publishing command: %v", err))

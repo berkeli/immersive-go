@@ -69,11 +69,13 @@ func main() {
 			select {
 			case err := <-consumer.Errors():
 				log.Println(err)
+				ErrorCounter.WithLabelValues(*topic, "read-message").Inc()
 			case msg := <-consumer.Messages():
 				var cmd types.Command
 				err := json.Unmarshal(msg.Value, &cmd)
 				if err != nil {
 					log.Println(err)
+					ErrorCounter.WithLabelValues(*topic, "json-unmarshall").Inc()
 				}
 				// record time in queue
 				JobQueueTime.WithLabelValues(*topic, cmd.Description).Observe(float64(msg.Timestamp.UnixNano()))
