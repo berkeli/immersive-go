@@ -2,15 +2,12 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
-	"sync"
 	"syscall"
 
-	"golang.org/x/sync/semaphore"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
 	"encoding/json"
@@ -24,7 +21,7 @@ import (
 var (
 	brokerList = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
 	topic      = kingpin.Flag("topic", "Topic name").Default("jobs-cluster-a").String()
-	retryTopic = kingpin.Flag("retryTopic", "Retry topic name").Default("jobs-cluster-a-retries").String()
+	retryTopic = kingpin.Flag("retryTopic", "Retry topic name").Default(*topic + "-retries").String()
 	partition  = kingpin.Flag("partition", "Partition number").Default("0").Int32()
 )
 
@@ -66,10 +63,6 @@ func main() {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 	chDone := make(chan bool)
-	wgWorkers := sync.WaitGroup{}
-
-	// Max concurrent jobs
-	sem := semaphore.NewWeighted(1)
 
 	go func() {
 		for {
@@ -82,9 +75,9 @@ func main() {
 				if err != nil {
 					log.Println(err)
 				}
-				wgWorkers.Add(1)
-				sem.Acquire(context.Background(), 1)
-				go processCommand(producer, cmd, &wgWorkers, sem)
+				// record time in queue
+				JobQueueTime.WithLabelValues(*topic, cmd.Description).Observe(float64(msg.Timestamp.UnixNano()))
+				processCommand(producer, cmd)
 			case <-signals:
 				chDone <- true
 				return
@@ -92,31 +85,30 @@ func main() {
 		}
 	}()
 	<-chDone
-	log.Println("Interrupt is detected, shutting down gracefully...")
-	wgWorkers.Wait()
 }
 
-func processCommand(producer sarama.SyncProducer, cmd types.Command, wg *sync.WaitGroup, sem *semaphore.Weighted) {
-	defer wg.Done()
-	defer sem.Release(1)
+func processCommand(producer sarama.SyncProducer, cmd types.Command) {
 	log.Println("Starting a job for: ", cmd.Description)
 	//metrics
 	timer := prometheus.NewTimer(JobDuration.WithLabelValues(*topic, cmd.Description))
 	defer timer.ObserveDuration()
-	JobStatus.WithLabelValues("new", *topic, cmd.Description).Inc()
+	JobsTotal.WithLabelValues(*topic, cmd.Description).Inc()
+	JobsInFlight.WithLabelValues(*topic, cmd.Description).Inc()
+	defer JobsInFlight.WithLabelValues(*topic, cmd.Description).Dec()
 
 	out, err := executeCommand(cmd.Command)
 	if err != nil {
-
+		JobsFailed.WithLabelValues(*topic, cmd.Description).Inc()
 		log.Printf("Command: %s resulted in error: %s\n", cmd.Command, err)
 		if cmd.MaxRetries > 0 {
-			JobStatus.WithLabelValues("retry", *topic, cmd.Description).Inc()
 			cmd.MaxRetries--
 			log.Printf("Retrying command: %s, %d retries left\n", cmd.Command, cmd.MaxRetries)
 			cmdBytes, err := json.Marshal(cmd)
 
 			if err != nil {
 				log.Println(err)
+				ErrorCounter.WithLabelValues(*topic, "json-marshall").Inc()
+				return
 			}
 			_, _, err = producer.SendMessage(&sarama.ProducerMessage{
 				Topic: *retryTopic,
@@ -126,14 +118,17 @@ func processCommand(producer sarama.SyncProducer, cmd types.Command, wg *sync.Wa
 
 			if err != nil {
 				log.Println(err)
+				ErrorCounter.WithLabelValues(*topic, "publish-retry").Inc()
+				return
 			}
-
+			JobsRetried.WithLabelValues(*topic, cmd.Description).Inc()
 		} else {
-			JobStatus.WithLabelValues("failed", *topic, cmd.Description).Inc()
+			JobsFailed.WithLabelValues(*topic, cmd.Description).Inc()
+			ErrorCounter.WithLabelValues(*topic, "execution").Inc()
 			log.Printf("Command: %s failed, no more retries left\n", cmd.Command)
 		}
 	}
-	JobStatus.WithLabelValues("success", *topic, cmd.Description).Inc()
+	JobsProcessed.WithLabelValues(*topic, cmd.Description).Inc()
 	log.Println(out)
 }
 
@@ -143,7 +138,13 @@ func executeCommand(command string) (string, error) {
 		Setpgid: true,
 	}
 	var out bytes.Buffer
+	var outErr bytes.Buffer
 	cmd.Stdout = &out
+	cmd.Stderr = &outErr
 	err := cmd.Run()
+
+	if err != nil {
+		log.Println(outErr.String())
+	}
 	return out.String(), err
 }

@@ -29,12 +29,6 @@ func main() {
 	kingpin.Parse()
 	config := sarama.NewConfig()
 
-	admin, err := sarama.NewClusterAdmin(*brokerList, config)
-
-	if err != nil {
-		log.Panic(err)
-	}
-
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Producer.Return.Successes = true
 	producer, err := sarama.NewSyncProducer(*brokerList, config)
@@ -43,9 +37,6 @@ func main() {
 	}
 	defer func() {
 		if err := producer.Close(); err != nil {
-			log.Panic(err)
-		}
-		if err := admin.Close(); err != nil {
 			log.Panic(err)
 		}
 	}()

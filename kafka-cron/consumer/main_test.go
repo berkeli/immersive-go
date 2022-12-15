@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/Shopify/sarama"
@@ -11,7 +10,6 @@ import (
 	"github.com/berkeli/kafka-cron/types"
 	"github.com/berkeli/kafka-cron/utils"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/semaphore"
 )
 
 func Test_ExecuteCommand(t *testing.T) {
@@ -47,12 +45,7 @@ func Test_ProcessCommand(t *testing.T) {
 			Schedule:    "*/1 * * * *",
 		}
 
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-
-		sem := semaphore.NewWeighted(1)
-
-		processCommand(producer, cmd, wg, sem)
+		processCommand(producer, cmd)
 	})
 
 	t.Run("erroneous command should result in retry", func(t *testing.T) {
@@ -97,11 +90,6 @@ func Test_ProcessCommand(t *testing.T) {
 			return nil
 		})
 
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-
-		sem := semaphore.NewWeighted(1)
-
-		processCommand(producer, cmd, wg, sem)
+		processCommand(producer, cmd)
 	})
 }
