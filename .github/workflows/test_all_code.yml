@@ -1,0 +1,78 @@
+name: Test all applications
+
+on: [push]
+
+jobs:
+  test-go-cmd:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.19
+    - name: Test go-ls
+      run: cd cli-files/go-ls && go test ./... -race -covermode=atomic -coverprofile=../coverage.out -v
+    - name: Upload to codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        name: go-ls coverage
+        files: ./cli-files/go-ls/coverage.out
+    - name: Test go-cat
+      run: cd cli-files/go-cat && go test ./... -race -covermode=atomic -coverprofile=../coverage.out -v
+    - name: Upload to codecov
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        name: go-cat coverage
+        files: ./cli-files/go-cat/coverage.out
+  test-http-auth:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.19
+    - name: Test http-auth
+      run: cd http-auth && EXECUTION_ENVIRONMENT="test" go test ./... -race -covermode=atomic -coverprofile=coverage.out -v
+    - name: Upload to codecov
+      uses: codecov/codecov-action@v3
+      with:
+        name: http-auth coverage
+        files: ./http-auth/coverage.out
+  test-server-database:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: go-server-database-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.19
+    - name: Run server-database tests
+      working-directory: ./server-database
+      run: EXECUTION_ENVIRONMENT="test" DB_URL="postgresql://postgres:postgres@localhost:5432/go-server-database-test" go test ./... -race -covermode=atomic -coverprofile=coverage.out -v
+    - name: Upload to codecov
+      uses: codecov/codecov-action@v3
+      with:
+        name: server-database coverage
+        files: ./server-database/coverage.out
+    
+
