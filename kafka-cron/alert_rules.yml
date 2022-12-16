@@ -13,3 +13,10 @@ groups:
         # Labels - additional labels to be attached to the alert
         labels:
           severity: 'critical'
+      - alert: ProducerToConsumerRatio
+        expr: sum by (topic) (increase(jobs_published[10m]))/sum by (topic) (increase(jobs_processed[10m])) > 1.5
+        annotations:
+          title: 'Producer to consumer ratio is greater than 1.5'
+          description: 'Producer to consumer ratio is greater than 1.5'
+        labels:
+          severity: 'critical'

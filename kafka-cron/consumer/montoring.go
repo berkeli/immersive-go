@@ -33,12 +33,14 @@ var (
 		Help: "Total number of jobs retried",
 	}, []string{"topic", "description"})
 	JobQueueTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "job_queue_time_seconds",
-		Help: "Time in queue in seconds",
+		Name:    "job_queue_time_seconds",
+		Help:    "Time in queue in seconds",
+		Buckets: []float64{5, 10, 20, 30, 35, 50, 60, 65, 90, 180, 300, 600, 900, 1800, 3600},
 	}, []string{"topic", "description"})
 	JobDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "job_duration_seconds",
-		Help: "Duration of jobs in seconds",
+		Name:    "job_duration_seconds",
+		Help:    "Duration of jobs in seconds",
+		Buckets: []float64{5, 10, 20, 30, 35, 50, 60, 65, 90},
 	}, []string{"topic", "description", "status"})
 	ErrorCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "error_counter",

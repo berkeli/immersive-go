@@ -110,7 +110,6 @@ func processCommand(producer sarama.SyncProducer, cmd types.Command) {
 	out, err := executeCommand(cmd.Command)
 	if err != nil {
 		status = "failed"
-		JobsFailed.WithLabelValues(*topic, cmd.Description).Inc()
 		log.Printf("Command: %s resulted in error: %s\n", cmd.Command, err)
 		if cmd.MaxRetries > 0 {
 			cmd.MaxRetries--
