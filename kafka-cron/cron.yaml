@@ -12,32 +12,37 @@ clusters:
     partitions: 1
   - name: "cluster-b-retries"
 crons:
-  - description: 'Echo Hello world every day at 00:00 AM'
-    schedule: "0 0 * * *"
-    command: "echo 'Hello, world!'"
-    clusters: 
-      - "cluster-a"
-  - description: 'Echo Hello world every minute'
+  - description: 'Task #1'
     schedule: "* * * * *"
-    command: echo 'Hello, world!'
-    clusters: 
-      - "cluster-b"
-  - description: 'Random failure every 2 minutes'
-    schedule: "*/2 * * * *"
     command: sh /scripts/random-fail.sh
     max_retries: 3
     clusters: 
       - "cluster-a"
-  - description: 'Http request every minute'
+      - "cluster-b"
+  - description: 'Task #2'
     schedule: "* * * * *"
-    command: sh /scripts/http-request.sh
+    command: sh /scripts/random-fail.sh
     max_retries: 3
     clusters: 
       - "cluster-a"
       - "cluster-b"
-  - description: 'Http request every minute'
+  - description: 'Task #3'
     schedule: "* * * * *"
-    command: sh /scripts/http-request.sh
+    command: sh /scripts/random-fail.sh
+    max_retries: 3
+    clusters: 
+      - "cluster-a"
+      - "cluster-b"
+  - description: 'Task #4'
+    schedule: "* * * * *"
+    command: sh /scripts/random-fail.sh
+    max_retries: 3
+    clusters: 
+      - "cluster-a"
+      - "cluster-b"
+  - description: 'Task #5'
+    schedule: "* * * * *"
+    command: sh /scripts/random-fail.sh
     max_retries: 3
     clusters: 
       - "cluster-a"

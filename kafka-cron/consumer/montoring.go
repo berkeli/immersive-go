@@ -39,11 +39,15 @@ var (
 	JobDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "job_duration_seconds",
 		Help: "Duration of jobs in seconds",
-	}, []string{"topic", "description"})
+	}, []string{"topic", "description", "status"})
 	ErrorCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "error_counter",
 		Help: "Number of errors",
 	}, []string{"topic", "type"})
+	JobsPublished = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "jobs_published",
+		Help: "Total number of jobs published",
+	}, []string{"topic", "description"})
 )
 
 func InitMonitoring(port int) (Metrics, error) {

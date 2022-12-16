@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -16,7 +17,6 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/berkeli/kafka-cron/types"
 	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -95,14 +95,21 @@ func main() {
 func processCommand(producer sarama.SyncProducer, cmd types.Command) {
 	log.Println("Starting a job for: ", cmd.Description)
 	//metrics
-	timer := prometheus.NewTimer(JobDuration.WithLabelValues(*topic, cmd.Description))
-	defer timer.ObserveDuration()
+	status := "success"
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		fmt.Println("Job took: ", duration.Seconds(), " seconds")
+		JobDuration.WithLabelValues(*topic, cmd.Description, status).Observe(duration.Seconds())
+	}()
+
 	JobsTotal.WithLabelValues(*topic, cmd.Description).Inc()
 	JobsInFlight.WithLabelValues(*topic, cmd.Description).Inc()
 	defer JobsInFlight.WithLabelValues(*topic, cmd.Description).Dec()
 
 	out, err := executeCommand(cmd.Command)
 	if err != nil {
+		status = "failed"
 		JobsFailed.WithLabelValues(*topic, cmd.Description).Inc()
 		log.Printf("Command: %s resulted in error: %s\n", cmd.Command, err)
 		if cmd.MaxRetries > 0 {
@@ -126,6 +133,7 @@ func processCommand(producer sarama.SyncProducer, cmd types.Command) {
 				ErrorCounter.WithLabelValues(*topic, "publish-retry").Inc()
 				return
 			}
+			JobsPublished.WithLabelValues(*retryTopic, cmd.Description).Inc()
 			JobsRetried.WithLabelValues(*topic, cmd.Description).Inc()
 		} else {
 			JobsFailed.WithLabelValues(*topic, cmd.Description).Inc()

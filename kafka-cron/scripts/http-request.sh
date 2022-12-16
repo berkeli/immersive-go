@@ -9,7 +9,7 @@ if [ $? -eq 0 ]; then
     echo "Job succeeded"
     exit 0
 else
-    sleep 60
+    sleep 15
     echo "Job failed"
     exit 1
 fi

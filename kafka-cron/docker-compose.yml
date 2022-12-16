@@ -1,4 +1,7 @@
 version: '3.9'
+networks: 
+  default: 
+    name: kafka_cron
 
 volumes:
   prometheus_data: {}

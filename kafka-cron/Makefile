@@ -2,6 +2,9 @@
 run:
 	docker-compose up -d
 
+add:
+	docker-compose -f docker-compose-add.yml up -d
+
 destroy:
 	docker-compose down
 	docker rmi $(shell docker images | grep 'kafka-cron')
