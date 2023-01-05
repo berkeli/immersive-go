@@ -2,9 +2,9 @@ package main
 
 import (
 	"errors"
-	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"gopkg.in/gographics/imagick.v2/imagick"
 )
 
@@ -16,9 +16,7 @@ func TestGrayscaleMockError(t *testing.T) {
 	}
 
 	err := c.Grayscale("input.jpg", "output.jpg")
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	require.Error(t, err)
 }
 
 func TestGrayscaleMockCall(t *testing.T) {
@@ -35,10 +33,6 @@ func TestGrayscaleMockCall(t *testing.T) {
 	}
 
 	err := c.Grayscale("input.jpg", "output.jpg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(expected, args) {
-		t.Fatalf("incorrect arguments: expected %v, got %v", expected, args)
-	}
+	require.NoError(t, err)
+	require.Exactly(t, expected, args)
 }
