@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:  
+  server_1:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+    environment:
+      ID: 1
+
+  server_2:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+    environment:
+      ID: 2
+  
+  server_3:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+    environment:
+      ID: 3
+
+  server_4:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+    environment:
+      ID: 4
+
+  server_5:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+    environment:
+      ID: 5
+

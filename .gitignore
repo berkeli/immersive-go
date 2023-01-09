@@ -1,3 +1,6 @@
 .DS_Store
 !*/assets
 
+# temp
+kafka-cron
+multiple-servers

@@ -1,0 +1,80 @@
+version: "3.9"
+networks:
+  raft:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.0.0/16
+
+services:
+  consul:
+    image: consul:1.9.0
+    command: ["consul","agent","-config-file=/config/consul.hcl", "-config-dir=/config"]
+    volumes:
+      - "./consul/server_config:/config"
+    environment:
+      CENTRAL_CONFIG_DIR: /config/central_config
+    ports:
+      - 8500:8500
+    networks:
+      raft:
+        ipv4_address: 10.20.0.2
+  
+  server_1:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+    environment:
+      ID: 1
+      CONSUL_HTTP_ADDR: consul:8500
+    networks:
+      raft:
+        ipv4_address: 10.20.0.3
+  server_1_sidecar:
+    image: joatmon08/consul-envoy:v1.9.0-v1.16.0
+    restart: always
+    platform: linux/x86_64
+    environment:
+      ID: 1
+      CONSUL_HTTP_ADDR: consul:8500
+      CONSUL_GRPC_ADDR: consul:8502
+      SERVICE_CONFIG: /config/server_1.hcl
+    network_mode: "service:server_1"
+    volumes:
+      - "./consul:/config"
+    command: ["consul", "connect", "envoy", "-sidecar-for", "server_1"]
+
+  server_2:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.server
+    environment:
+      ID: 2
+      CONSUL_HTTP_ADDR: consul:8500
+    networks:
+      raft:
+        ipv4_address: 10.20.0.4
+  server_2_sidecar:
+    image: joatmon08/consul-envoy:v1.9.0-v1.16.0
+    restart: always
+    platform: linux/x86_64
+    environment:
+      ID: 1
+      CONSUL_HTTP_ADDR: consul:8500
+      CONSUL_GRPC_ADDR: consul:8502
+      SERVICE_CONFIG: /config/server_2.hcl
+    network_mode: "service:server_2"
+    volumes:
+      - "./consul:/config"
+    command: ["consul", "connect", "envoy", "-sidecar-for", "server_2"]
+  
+  prometheus:
+    image: prom/prometheus
+    ports:	   
+      - 9090:9090
+    volumes:
+      - "./prometheus.yml:/etc/prometheus/prometheus.yml"
+    networks:
+      raft:
+        ipv4_address: 10.20.0.9
+
