@@ -7,6 +7,10 @@ import (
 	RP "github.com/berkeli/raft-otel/service/registry"
 )
 
+const (
+	Timeout = 10 * time.Second
+)
+
 type Node struct {
 	Address     string
 	LastCheckin time.Time
@@ -28,15 +32,17 @@ func (r *RegistryService) List(ctx context.Context, req *RP.ListRequest) (*RP.Li
 
 	for id, node := range r.nodes {
 
-		if time.Since(node.LastCheckin) > time.Second*5 {
+		if time.Since(node.LastCheckin) > Timeout {
 			delete(r.nodes, id)
 			continue
 		}
 
-		nodes = append(nodes, &RP.Node{
-			Id:      id,
-			Address: node.Address,
-		})
+		if req.Id != id {
+			nodes = append(nodes, &RP.Node{
+				Id:      id,
+				Address: node.Address,
+			})
+		}
 	}
 
 	return &RP.ListResponse{

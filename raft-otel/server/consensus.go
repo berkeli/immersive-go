@@ -10,7 +10,10 @@ import (
 	"time"
 
 	CP "github.com/berkeli/raft-otel/service/consensus"
+	RP "github.com/berkeli/raft-otel/service/registry"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
@@ -27,6 +30,8 @@ const (
 type ConsensusServer struct {
 	sync.Mutex
 	CP.UnimplementedConsensusServiceServer
+
+	rc RP.RegistryClient
 
 	id int64
 
@@ -56,6 +61,12 @@ func NewConsensusServer() *ConsensusServer {
 
 	id := int64(idInt)
 
+	conn, err := grpc.DialContext(context.Background(), os.Getenv("REGISTRY_URL"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	return &ConsensusServer{
 		state: Follower,
 		id:    id,
@@ -65,6 +76,7 @@ func NewConsensusServer() *ConsensusServer {
 		}, // log is 1-indexed
 		nextIndex:  make(map[int64]int64),
 		matchIndex: make(map[int64]int64),
+		rc:         RP.NewRegistryClient(conn),
 	}
 }
 
@@ -162,18 +174,35 @@ func (cs *ConsensusServer) autodiscovery() {
 			<-ticker.C
 			cs.Lock()
 
-			i := int64(1)
+			hr, err := cs.rc.Heartbeat(context.Background(), &RP.HeartbeatRequest{
+				Id:      cs.id,
+				Address: fmt.Sprintf("localhost:%s", os.Getenv("PORT")),
+			})
 
-			for i < 6 {
-				myId := os.Getenv("ID")
-				if myId != fmt.Sprintf("%d", i) && cs.peers[i] == nil {
-					log.Println("Connecting to peer", i)
-					cs.peers[i] = ConnectToPeer(i)
-					cs.nextIndex[i] = cs.lastApplied + 1
-					cs.matchIndex[i] = 0
-				}
-				i++
+			if err != nil || !hr.Ok {
+				log.Println("Error while sending heartbeat to registry: ", err)
+				cs.Unlock()
+				continue
 			}
+
+			r, err := cs.rc.List(context.Background(), &RP.ListRequest{
+				Id: cs.id,
+			})
+
+			if err != nil {
+				log.Println("Error while autodiscovering peers: ", err)
+				cs.Unlock()
+				continue
+			}
+
+			for _, node := range r.Nodes {
+				if node.Id != cs.id && cs.peers[node.Id] == nil {
+					cs.peers[node.Id] = ConnectToPeer(node.Address)
+					cs.nextIndex[node.Id] = cs.lastApplied + 1
+					cs.matchIndex[node.Id] = 0
+				}
+			}
+
 			cs.Unlock()
 		}
 	}()

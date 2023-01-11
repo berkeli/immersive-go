@@ -31,7 +31,7 @@ func (r *Registry) Run() error {
 		return err
 	}
 
-	fmt.Println("Registry listening on port 50051")
+	fmt.Println("Registry listening on port " + port + "...")
 
 	grpcServer := grpc.NewServer()
 

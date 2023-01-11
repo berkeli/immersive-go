@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -11,15 +10,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func ConnectToPeer(id int64) CP.ConsensusServiceClient {
-	host := fmt.Sprintf("server_%d:%d", 1, 50051)
-
+func ConnectToPeer(addr string) CP.ConsensusServiceClient {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	conn, err := grpc.DialContext(ctx, host, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Printf("Failed to connect to peer %d on %s: %v", id, host, err)
+		log.Printf("Failed to connect to peer on %s: %v", addr, err)
 		return nil
 	}
 
