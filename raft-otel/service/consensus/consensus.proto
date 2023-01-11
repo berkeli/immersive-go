@@ -5,37 +5,86 @@ package consensus;
 option go_package = "github.com/berkeli/raft-otel/service/consensus";
 
 message RequestVoteRequest {
-    int64 term = 1;
-    string candidateId = 2;
-    int64 lastLogIndex = 3;
-    int64 lastLogTerm = 4;
+
+    int64 term = 1; // candidate’s term
+
+    int64 candidateId = 2; // so candidate can redirect clients
+
+    int64 lastLogIndex = 3; // index of candidate’s last log entry
+
+    int64 lastLogTerm = 4; // term of candidate’s last log entry
+ 
 }
 
 message RequestVoteResponse {
-    int64 term = 1;
-    bool voteGranted = 2;
+
+    int64 term = 1; // currentTerm, for candidate to update itself
+
+    bool voteGranted = 2; // true means candidate received vote
+    
 }
 
 message AppendEntriesRequest {
-    int64 term = 1;
-    string leaderId = 2;
-    int64 prevLogIndex = 3;
-    int64 prevLogTerm = 4;
-    repeated Entry entries = 5;
-    int64 leaderCommit = 6;
+    
+    int64 term = 1; // leader’s term
+    
+    int64 leaderId = 2; // so follower can redirect clients
+    
+    int64 prevLogIndex = 3; // index of log entry immediately preceding new ones
+
+    int64 prevLogTerm = 4; // term of prevLogIndex entry
+
+    repeated Entry entries = 5; // log entries to store (empty for heartbeat; may send more than one for efficiency)
+    
+    int64 leaderCommit = 6; // leader’s commitIndex
+
 }
 
 message AppendEntriesResponse {
-    int64 term = 1;
-    bool success = 2;
+
+    int64 term = 1; // currentTerm, for leader to update itself
+
+    bool success = 2; // true if follower contained entry matching prevLogIndex and prevLogTerm
+
+}
+
+message Command {
+    
+        string op = 1;
+
+        string key = 2;
+
+        bytes data = 3;
+
 }
 
 message Entry {
-    int64 term = 1;
-    string command = 2;
+
+    int64 term = 1; // term when entry was received by leader (first index is 1)
+
+    Command command = 2; // command for state machine, null for heartbeat
+
 }
 
 service ConsensusService {
-    rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse) {}
+    
+    // Receiver implementation:
+    // 1. Reply false if term < currentTerm (§5.1)
+    // 2. Reply false if log doesn’t contain an entry at prevLogIndex
+    // whose term matches prevLogTerm (§5.3)
+    // 3. If an existing entry conflicts with a new one (same index
+    // but different terms), delete the existing entry and all that
+    // follow it (§5.3)
+    // 4. Append any new entries not already in the log
+    // 5. If leaderCommit > commitIndex, set commitIndex =
+    // min(leaderCommit, index of last new entry)
     rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse) {}
+
+    // Receiver implementation:
+    // 1. Reply false if term < currentTerm (§5.1)
+    // 2. If votedFor is null or candidateId, and candidate’s log is at
+    // least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+
+    rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse) {}
+
 }

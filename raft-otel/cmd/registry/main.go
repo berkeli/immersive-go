@@ -3,12 +3,12 @@ package main
 import (
 	"log"
 
-	"github.com/berkeli/raft-otel/server"
+	"github.com/berkeli/raft-otel/registry"
 )
 
 func main() {
 
-	s := server.New()
+	s := registry.New()
 
 	err := s.Run()
 

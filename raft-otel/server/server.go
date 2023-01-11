@@ -5,19 +5,23 @@ import (
 	"log"
 	"net"
 
-	pb "github.com/berkeli/raft-otel/service/consensus"
+	CP "github.com/berkeli/raft-otel/service/consensus"
+	SP "github.com/berkeli/raft-otel/service/store"
 	"google.golang.org/grpc"
 )
 
 type Server struct {
 	cs *ConsensusServer
+	ss *StorageServer
 }
 
-func New(id int) *Server {
-
-	return &Server{
-		cs: NewConsensusServer(id),
+func New() *Server {
+	s := &Server{
+		cs: NewConsensusServer(),
+		ss: NewStorageServer(),
 	}
+
+	return s
 }
 
 func (s *Server) Run() error {
@@ -28,11 +32,14 @@ func (s *Server) Run() error {
 		return err
 	}
 
+	s.cs.autodiscovery()
+
 	log.Println("Server listening on port 50051")
 
 	grpcServer := grpc.NewServer()
 
-	pb.RegisterConsensusServiceServer(grpcServer, s.cs)
+	CP.RegisterConsensusServiceServer(grpcServer, s.cs)
+	SP.RegisterStoreServer(grpcServer, s.ss)
 
 	err = grpcServer.Serve(lis)
 

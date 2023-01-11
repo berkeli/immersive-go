@@ -1,12 +1,20 @@
 version: "3.9"
 
-services:  
+services:
+
+  registry:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.registry
+    environment:
+      PORT: 50051
   server_1:
     build:
       context: .
       dockerfile: ./Dockerfile.server
     environment:
       ID: 1
+      REGISTRY_URL: registry:50051
 
   server_2:
     build:
@@ -14,6 +22,7 @@ services:
       dockerfile: ./Dockerfile.server
     environment:
       ID: 2
+      REGISTRY_URL: registry:50051
   
   server_3:
     build:
@@ -21,6 +30,7 @@ services:
       dockerfile: ./Dockerfile.server
     environment:
       ID: 3
+      REGISTRY_URL: registry:50051
 
   server_4:
     build:
@@ -28,6 +38,7 @@ services:
       dockerfile: ./Dockerfile.server
     environment:
       ID: 4
+      REGISTRY_URL: registry:50051
 
   server_5:
     build:
@@ -35,4 +46,5 @@ services:
       dockerfile: ./Dockerfile.server
     environment:
       ID: 5
+      REGISTRY_URL: registry:50051
 

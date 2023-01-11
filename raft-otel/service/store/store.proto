@@ -12,7 +12,7 @@ message GetRequest {
 
 message GetResponse {
 
-  string value = 1;
+  bytes value = 1;
 
 }
 
@@ -20,7 +20,7 @@ message PutRequest {
 
   string key = 1;
 
-  string value = 2;
+  bytes value = 2;
 
 }
 
@@ -34,9 +34,9 @@ message CompareAndSetRequest {
     
       string key = 1;
     
-      string value = 2;
+      bytes value = 2;
     
-      string prev_value = 3;
+      bytes prev_value = 3;
     
 }
 
