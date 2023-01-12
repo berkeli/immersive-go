@@ -2,10 +2,14 @@ package registry
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 
 	RP "github.com/berkeli/raft-otel/service/registry"
+	"github.com/honeycombio/honeycomb-opentelemetry-go"
+	"github.com/honeycombio/opentelemetry-go-contrib/launcher"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 )
 
@@ -31,9 +35,20 @@ func (r *Registry) Run() error {
 		return err
 	}
 
-	fmt.Println("Registry listening on port " + port + "...")
+	bsp := honeycomb.NewBaggageSpanProcessor()
 
-	grpcServer := grpc.NewServer()
+	otelShutdown, err := launcher.ConfigureOpenTelemetry(
+		launcher.WithSpanProcessor(bsp),
+	)
+	if err != nil {
+		log.Fatalf("error setting up OTel SDK - %e", err)
+	}
+	defer otelShutdown()
+
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(otelgrpc.UnaryServerInterceptor()),
+		grpc.StreamInterceptor(otelgrpc.StreamServerInterceptor()),
+	)
 
 	RP.RegisterRegistryServer(grpcServer, rs)
 

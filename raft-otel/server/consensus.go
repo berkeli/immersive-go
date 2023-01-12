@@ -169,6 +169,8 @@ func (cs *ConsensusServer) autodiscovery() {
 
 	ticker := time.NewTicker(3 * time.Second)
 
+	host, port := GetHostAndPort()
+
 	go func() {
 		for {
 			<-ticker.C
@@ -176,7 +178,7 @@ func (cs *ConsensusServer) autodiscovery() {
 
 			hr, err := cs.rc.Heartbeat(context.Background(), &RP.HeartbeatRequest{
 				Id:      cs.id,
-				Address: fmt.Sprintf("localhost:%s", os.Getenv("PORT")),
+				Address: fmt.Sprintf("%s:%s", host, port),
 			})
 
 			if err != nil || !hr.Ok {
@@ -236,9 +238,6 @@ func (cs *ConsensusServer) BecomeCandidate() error {
 }
 
 func (cs *ConsensusServer) Heartbeat() {
-	cs.Lock()
-	defer cs.Unlock()
-
 	frequency := 50 * time.Millisecond
 
 	ticker := time.NewTicker(frequency)
@@ -254,11 +253,12 @@ func (cs *ConsensusServer) Heartbeat() {
 			}
 
 			if cs.state == Leader {
-				for _, peer := range cs.peers {
+				for id, peer := range cs.peers {
 					if peer == nil {
 						continue
 					}
 
+					cs.appendEntriesRPC(id, 0)
 				}
 			}
 

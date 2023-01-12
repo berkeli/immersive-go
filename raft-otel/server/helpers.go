@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	CP "github.com/berkeli/raft-otel/service/consensus"
@@ -30,4 +31,18 @@ func Min(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+func GetHostAndPort() (string, string) {
+	host, port := os.Getenv("HOST_URL"), os.Getenv("PORT")
+
+	if host == "" {
+		host = "localhost"
+	}
+
+	if port == "" {
+		port = "50051"
+	}
+
+	return host, port
 }

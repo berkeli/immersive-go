@@ -1,5 +1,4 @@
 version: "3.9"
-
 services:
 
   registry:
@@ -8,6 +7,8 @@ services:
       dockerfile: ./Dockerfile.registry
     environment:
       PORT: 50051
+      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
+      OTEL_SERVICE_NAME: registry-server
   server_1:
     build:
       context: .
@@ -15,7 +16,10 @@ services:
     environment:
       ID: 1
       REGISTRY_URL: registry:50051
-
+      HOST_URL: server_1
+      PORT: 50051
+      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
+      OTEL_SERVICE_NAME: raft-server-1
   server_2:
     build:
       context: .
@@ -23,6 +27,10 @@ services:
     environment:
       ID: 2
       REGISTRY_URL: registry:50051
+      HOST_URL: server_2
+      PORT: 50051
+      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
+      OTEL_SERVICE_NAME: raft-server-2
   
   server_3:
     build:
@@ -31,6 +39,10 @@ services:
     environment:
       ID: 3
       REGISTRY_URL: registry:50051
+      HOST_URL: server_3
+      PORT: 50051
+      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
+      OTEL_SERVICE_NAME: raft-server-3
 
   server_4:
     build:
@@ -39,6 +51,10 @@ services:
     environment:
       ID: 4
       REGISTRY_URL: registry:50051
+      HOST_URL: server_4
+      PORT: 50051
+      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
+      OTEL_SERVICE_NAME: raft-server-4
 
   server_5:
     build:
@@ -47,4 +63,8 @@ services:
     environment:
       ID: 5
       REGISTRY_URL: registry:50051
+      HOST_URL: server_5
+      PORT: 50051
+      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
+      OTEL_SERVICE_NAME: raft-server-5
 

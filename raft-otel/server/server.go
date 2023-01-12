@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 
 	CP "github.com/berkeli/raft-otel/service/consensus"
 	SP "github.com/berkeli/raft-otel/service/store"
@@ -27,11 +26,7 @@ func New() *Server {
 
 func (s *Server) Run() error {
 
-	port := os.Getenv("PORT")
-
-	if port == "" {
-		port = "50051"
-	}
+	_, port := GetHostAndPort()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%s", port))
 
@@ -41,7 +36,7 @@ func (s *Server) Run() error {
 
 	s.cs.autodiscovery()
 
-	log.Println("Server listening on port " + port + "...")
+	log.Printf("Server listening on port %s...\n", port)
 
 	grpcServer := grpc.NewServer()
 
