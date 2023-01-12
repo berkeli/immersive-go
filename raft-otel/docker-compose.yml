@@ -3,30 +3,29 @@ services:
 
   registry:
     build:
-      context: .
       dockerfile: ./Dockerfile.registry
     environment:
       PORT: 50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: registry-server
+    ports:
+      - "50055:50051"
   server_1:
     build:
-      context: .
       dockerfile: ./Dockerfile.server
     environment:
       ID: 1
-      REGISTRY_URL: registry:50051
+      REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: server_1
       PORT: 50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-1
   server_2:
     build:
-      context: .
       dockerfile: ./Dockerfile.server
     environment:
       ID: 2
-      REGISTRY_URL: registry:50051
+      REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: server_2
       PORT: 50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
@@ -34,11 +33,10 @@ services:
   
   server_3:
     build:
-      context: .
       dockerfile: ./Dockerfile.server
     environment:
       ID: 3
-      REGISTRY_URL: registry:50051
+      REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: server_3
       PORT: 50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
@@ -46,11 +44,10 @@ services:
 
   server_4:
     build:
-      context: .
       dockerfile: ./Dockerfile.server
     environment:
       ID: 4
-      REGISTRY_URL: registry:50051
+      REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: server_4
       PORT: 50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
@@ -58,11 +55,10 @@ services:
 
   server_5:
     build:
-      context: .
       dockerfile: ./Dockerfile.server
     environment:
       ID: 5
-      REGISTRY_URL: registry:50051
+      REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: server_5
       PORT: 50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}

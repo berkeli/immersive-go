@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	SP "github.com/berkeli/raft-otel/service/store"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -27,7 +29,12 @@ func (c *Client) Run() error {
 		return fmt.Errorf("STORE_SERVER env variable not set")
 	}
 
-	conn, err := grpc.Dial(storeServer, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(
+		storeServer,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+	)
 
 	if err != nil {
 		return err

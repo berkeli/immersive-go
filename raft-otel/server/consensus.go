@@ -11,6 +11,7 @@ import (
 
 	CP "github.com/berkeli/raft-otel/service/consensus"
 	RP "github.com/berkeli/raft-otel/service/registry"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -61,7 +62,12 @@ func NewConsensusServer() *ConsensusServer {
 
 	id := int64(idInt)
 
-	conn, err := grpc.DialContext(context.Background(), os.Getenv("REGISTRY_URL"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(
+		os.Getenv("REGISTRY_URL"),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+	)
 
 	if err != nil {
 		log.Fatal(err)

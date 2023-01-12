@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	RP "github.com/berkeli/raft-otel/service/registry"
@@ -52,6 +53,8 @@ func (r *RegistryService) List(ctx context.Context, req *RP.ListRequest) (*RP.Li
 
 func (r *RegistryService) Heartbeat(ctx context.Context, req *RP.HeartbeatRequest) (*RP.HeartbeatResponse, error) {
 	node, ok := r.nodes[req.Id]
+
+	fmt.Println("Heartbeat from: ", req.Id, " address: ", req.Address)
 
 	if !ok {
 		r.nodes[req.Id] = &Node{
