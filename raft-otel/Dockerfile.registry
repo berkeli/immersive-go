@@ -1,4 +1,4 @@
-FROM golang:1.19-buster 
+FROM golang:1.19-buster AS build
 
 WORKDIR /app
 
@@ -11,8 +11,8 @@ RUN go mod download
 
 RUN go build -o /app/registry-exec ./cmd/registry
 
-# FROM gcr.io/distroless/base-debian10
+FROM gcr.io/distroless/base-debian10
 
-# COPY --from=build /app/registry-exec /app/registry-exec
+COPY --from=build /app/registry-exec /app/registry-exec
 
 ENTRYPOINT ["/app/registry-exec"]

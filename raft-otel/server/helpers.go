@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func ConnectToPeer(addr string) CP.ConsensusServiceClient {
+func ConnectToPeer(addr string) *Peer {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
@@ -29,8 +29,10 @@ func ConnectToPeer(addr string) CP.ConsensusServiceClient {
 	}
 
 	client := CP.NewConsensusServiceClient(conn)
-
-	return client
+	return &Peer{
+		client,
+		addr,
+	}
 }
 
 func Min(a, b int64) int64 {

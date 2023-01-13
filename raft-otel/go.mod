@@ -46,6 +46,7 @@ require (
 require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/honeycombio/honeycomb-opentelemetry-go v0.4.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.37.0
 	golang.org/x/net v0.1.0 // indirect

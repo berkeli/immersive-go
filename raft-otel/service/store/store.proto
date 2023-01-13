@@ -46,6 +46,14 @@ message CompareAndSetResponse {
     
 }
 
+message NotLeaderResponse {
+  
+    string leaderAddr = 1;
+
+    int64 leaderId = 2;
+
+}
+
 service Store {
 
   rpc Get(GetRequest) returns (GetResponse);

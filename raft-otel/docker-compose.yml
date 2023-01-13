@@ -1,35 +1,39 @@
 version: "3.9"
+
 services:
 
   registry:
     build:
       dockerfile: ./Dockerfile.registry
     environment:
-      PORT: 50051
+      PORT: 8080
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: registry-server
-    ports:
-      - "50055:50051"
+
   server_1:
     build:
       dockerfile: ./Dockerfile.server
     environment:
       ID: 1
       REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: server_1
+      HOST_URL: host.docker.internal
       PORT: 50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-1
+    ports:
+      - "50051:50051"
   server_2:
     build:
       dockerfile: ./Dockerfile.server
     environment:
       ID: 2
       REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: server_2
-      PORT: 50051
+      HOST_URL: host.docker.internal
+      PORT: 50052
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-2
+    ports:
+      - "50052:50052"
   
   server_3:
     build:
@@ -37,10 +41,13 @@ services:
     environment:
       ID: 3
       REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: server_3
-      PORT: 50051
+      HOST_URL: host.docker.internal
+      PORT: 50053
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-3
+    ports:
+      - "50053:50053"
+
 
   server_4:
     build:
@@ -48,10 +55,12 @@ services:
     environment:
       ID: 4
       REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: server_4
-      PORT: 50051
+      HOST_URL: host.docker.internal
+      PORT: 50054
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-4
+    ports:
+      - "50054:50054"
 
   server_5:
     build:
@@ -59,8 +68,17 @@ services:
     environment:
       ID: 5
       REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: server_5
-      PORT: 50051
+      HOST_URL: host.docker.internal
+      PORT: 50055
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-5
+    ports:
+      - "50055:50055"
+
+  # client:
+  #   build:
+  #     dockerfile: ./Dockerfile.client
+  #   environment:
+  #     STORE_SERVER: server_1:50051
+  #     OTEL_SERVICE_NAME: raft-client
 

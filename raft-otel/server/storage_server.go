@@ -5,6 +5,7 @@ import (
 	"context"
 
 	pb "github.com/berkeli/raft-otel/service/store"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -15,18 +16,13 @@ type StorageServer struct {
 	c *ConsensusServer
 }
 
-func NewStorageServer() *StorageServer {
+func NewStorageServer(s *MapStorage) *StorageServer {
 	return &StorageServer{
-		s: NewMapStorage(),
+		s: s,
 	}
 }
 
 func (ss *StorageServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
-
-	if ss.c.state != Leader {
-		return nil, status.Error(codes.Unavailable, "not leader")
-	}
-
 	val, found := ss.s.Get(req.Key)
 
 	if !found {
@@ -39,10 +35,6 @@ func (ss *StorageServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 }
 
 func (ss *StorageServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
-	if ss.c.state != Leader {
-		return nil, status.Error(codes.Unavailable, "not leader")
-	}
-
 	ok, err := ss.c.Commit(req.Key, req.Value)
 
 	if err != nil {
@@ -61,10 +53,6 @@ func (ss *StorageServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 }
 
 func (ss *StorageServer) CompareAndSet(ctx context.Context, req *pb.CompareAndSetRequest) (*pb.CompareAndSetResponse, error) {
-	if ss.c.state != Leader {
-		return nil, status.Error(codes.Unavailable, "not leader")
-	}
-
 	prev, found := ss.s.Get(req.Key)
 
 	if !found || bytes.Equal(prev, req.PrevValue) {
@@ -77,4 +65,34 @@ func (ss *StorageServer) CompareAndSet(ctx context.Context, req *pb.CompareAndSe
 	return &pb.CompareAndSetResponse{
 		Ok: false,
 	}, status.Error(codes.FailedPrecondition, "prev value does not match")
+}
+
+func (ss *StorageServer) LeaderCheckInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	switch info.Server.(type) {
+	case *ConsensusServer:
+		return handler(ctx, req)
+	default:
+		ss.c.Lock()
+		if ss.c.state != Leader {
+			if ss.c.leaderId == -1 {
+				return nil, status.Error(codes.Unavailable, "leader has not been elected yet")
+			}
+
+			status := status.New(codes.Unavailable, "not leader, redirecting")
+
+			status.WithDetails(
+				&pb.NotLeaderResponse{
+					LeaderId:   ss.c.leaderId,
+					LeaderAddr: ss.c.peers[ss.c.leaderId].Addr,
+				},
+			)
+
+			ss.c.Unlock()
+
+			return nil, status.Err()
+		}
+		ss.c.Unlock()
+	}
+
+	return handler(ctx, req)
 }

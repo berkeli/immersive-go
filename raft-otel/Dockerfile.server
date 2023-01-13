@@ -1,4 +1,4 @@
-FROM golang:1.19-buster 
+FROM golang:1.19-buster AS build
 
 WORKDIR /app
 
@@ -11,8 +11,8 @@ RUN go mod download
 
 RUN go build -o /app/server-exec ./cmd/server
 
-# FROM gcr.io/distroless/base-debian10
+FROM gcr.io/distroless/base-debian10
 
-# COPY --from=build /app/server-exec /app/server-exec
+COPY --from=build /app/server-exec /app/server-exec
 
 ENTRYPOINT ["/app/server-exec"]

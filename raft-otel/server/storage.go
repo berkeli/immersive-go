@@ -14,8 +14,8 @@ type Storage interface {
 
 // MapStorage is a simple in-memory implementation of Storage for testing.
 type MapStorage struct {
-	mu sync.Mutex
-	m  map[string][]byte
+	sync.Mutex
+	m map[string][]byte
 }
 
 func NewMapStorage() *MapStorage {
@@ -26,20 +26,20 @@ func NewMapStorage() *MapStorage {
 }
 
 func (ms *MapStorage) Get(key string) ([]byte, bool) {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
+	ms.Lock()
+	defer ms.Unlock()
 	v, found := ms.m[key]
 	return v, found
 }
 
 func (ms *MapStorage) Set(key string, value []byte) {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
+	ms.Lock()
+	defer ms.Unlock()
 	ms.m[key] = value
 }
 
 func (ms *MapStorage) HasData() bool {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
+	ms.Lock()
+	defer ms.Unlock()
 	return len(ms.m) > 0
 }

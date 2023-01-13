@@ -9,6 +9,7 @@ import (
 
 	CP "github.com/berkeli/raft-otel/service/consensus"
 	SP "github.com/berkeli/raft-otel/service/store"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	_ "github.com/honeycombio/honeycomb-opentelemetry-go"
 	"github.com/honeycombio/opentelemetry-go-contrib/launcher"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -22,10 +23,14 @@ type Server struct {
 }
 
 func New() *Server {
+	mapStore := NewMapStorage()
+
 	s := &Server{
-		cs: NewConsensusServer(),
-		ss: NewStorageServer(),
+		cs: NewConsensusServer(mapStore),
+		ss: NewStorageServer(mapStore),
 	}
+
+	s.ss.c = s.cs
 
 	return s
 }
@@ -40,8 +45,6 @@ func (s *Server) Run() error {
 		return err
 	}
 
-	s.cs.autodiscovery()
-
 	otelShutdown, err := launcher.ConfigureOpenTelemetry()
 	if err != nil {
 		log.Fatalf("error setting up OTel SDK - %e", err)
@@ -49,7 +52,10 @@ func (s *Server) Run() error {
 	defer otelShutdown()
 
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(otelgrpc.UnaryServerInterceptor()),
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+			otelgrpc.UnaryServerInterceptor(),
+			s.ss.LeaderCheckInterceptor,
+		)),
 		grpc.StreamInterceptor(otelgrpc.StreamServerInterceptor()),
 	)
 

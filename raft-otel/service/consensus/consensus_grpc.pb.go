@@ -34,6 +34,7 @@ type ConsensusServiceClient interface {
 	// min(leaderCommit, index of last new entry)
 	AppendEntries(ctx context.Context, in *AppendEntriesRequest, opts ...grpc.CallOption) (*AppendEntriesResponse, error)
 	RequestVote(ctx context.Context, in *RequestVoteRequest, opts ...grpc.CallOption) (*RequestVoteResponse, error)
+	Dummy(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error)
 }
 
 type consensusServiceClient struct {
@@ -62,6 +63,15 @@ func (c *consensusServiceClient) RequestVote(ctx context.Context, in *RequestVot
 	return out, nil
 }
 
+func (c *consensusServiceClient) Dummy(ctx context.Context, in *DummyRequest, opts ...grpc.CallOption) (*DummyResponse, error) {
+	out := new(DummyResponse)
+	err := c.cc.Invoke(ctx, "/consensus.ConsensusService/Dummy", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConsensusServiceServer is the server API for ConsensusService service.
 // All implementations must embed UnimplementedConsensusServiceServer
 // for forward compatibility
@@ -78,6 +88,7 @@ type ConsensusServiceServer interface {
 	// min(leaderCommit, index of last new entry)
 	AppendEntries(context.Context, *AppendEntriesRequest) (*AppendEntriesResponse, error)
 	RequestVote(context.Context, *RequestVoteRequest) (*RequestVoteResponse, error)
+	Dummy(context.Context, *DummyRequest) (*DummyResponse, error)
 	mustEmbedUnimplementedConsensusServiceServer()
 }
 
@@ -90,6 +101,9 @@ func (UnimplementedConsensusServiceServer) AppendEntries(context.Context, *Appen
 }
 func (UnimplementedConsensusServiceServer) RequestVote(context.Context, *RequestVoteRequest) (*RequestVoteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RequestVote not implemented")
+}
+func (UnimplementedConsensusServiceServer) Dummy(context.Context, *DummyRequest) (*DummyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Dummy not implemented")
 }
 func (UnimplementedConsensusServiceServer) mustEmbedUnimplementedConsensusServiceServer() {}
 
@@ -140,6 +154,24 @@ func _ConsensusService_RequestVote_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ConsensusService_Dummy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DummyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConsensusServiceServer).Dummy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/consensus.ConsensusService/Dummy",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConsensusServiceServer).Dummy(ctx, req.(*DummyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ConsensusService_ServiceDesc is the grpc.ServiceDesc for ConsensusService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -154,6 +186,10 @@ var ConsensusService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RequestVote",
 			Handler:    _ConsensusService_RequestVote_Handler,
+		},
+		{
+			MethodName: "Dummy",
+			Handler:    _ConsensusService_Dummy_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
