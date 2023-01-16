@@ -12,28 +12,13 @@ import (
 	"time"
 
 	CP "github.com/berkeli/raft-otel/service/consensus"
-	RP "github.com/berkeli/raft-otel/service/registry"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-)
-
-const (
-	Leader    = "leader"
-	Follower  = "follower"
-	Candidate = "candidate"
 )
 
 const (
 	ReqTimeout = 5 * time.Second
 )
-
-type Peer struct {
-	CP.ConsensusServiceClient
-	Addr string
-}
 
 type ConsensusServer struct {
 	sync.Mutex
@@ -41,15 +26,10 @@ type ConsensusServer struct {
 
 	store *MapStorage
 
-	rc RP.RegistryClient
-
-	cxlChan           chan struct{}
-	electionResetChan chan struct{}
-
 	id       int64
 	leaderId int64
 
-	state       string
+	state       State
 	currentTerm int64
 	votedFor    int64
 	log         []*CP.Entry
@@ -73,37 +53,22 @@ func NewConsensusServer(s *MapStorage) *ConsensusServer {
 		log.Fatal(err)
 	}
 
-	conn, err := grpc.Dial(
-		os.Getenv("REGISTRY_URL"),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
-	)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	cs := &ConsensusServer{
 		log: []*CP.Entry{
 			{},
 		},
-		state:             Follower,
-		id:                int64(id),
-		peers:             make(map[int64]*Peer),
-		nextIndex:         make(map[int64]int64),
-		matchIndex:        make(map[int64]int64),
-		rc:                RP.NewRegistryClient(conn),
-		cxlChan:           make(chan struct{}),
-		lastApplied:       -1,
-		commitIndex:       -1,
-		votedFor:          -1,
-		lastHeartbeat:     time.Now(),
-		electionResetChan: make(chan struct{}),
-		store:             s,
+		state:         Follower,
+		id:            int64(id),
+		peers:         make(map[int64]*Peer),
+		nextIndex:     make(map[int64]int64),
+		matchIndex:    make(map[int64]int64),
+		lastApplied:   -1,
+		commitIndex:   -1,
+		votedFor:      -1,
+		lastHeartbeat: time.Now(),
+		store:         s,
 	}
 
-	go cs.autodiscovery()
 	go cs.electionTimer()
 	go cs.stateReport()
 
@@ -218,70 +183,6 @@ func (cs *ConsensusServer) AppendEntries(ctx context.Context, req *CP.AppendEntr
 		Term:    cs.currentTerm,
 		Success: true,
 	}, nil
-}
-
-func (cs *ConsensusServer) autodiscovery() {
-
-	ticker := time.NewTicker(500 * time.Millisecond)
-
-	host, port := GetHostAndPort()
-
-	defer ticker.Stop()
-
-	for {
-		<-ticker.C
-		cs.Lock()
-
-		hr, err := cs.rc.Heartbeat(context.Background(), &RP.HeartbeatRequest{
-			Id:      cs.id,
-			Address: fmt.Sprintf("%s:%s", host, port),
-		})
-
-		if err != nil || !hr.Ok {
-			log.Println("Error while sending heartbeat to registry: ", err)
-			cs.Unlock()
-			continue
-		}
-
-		r, err := cs.rc.List(context.Background(), &RP.ListRequest{
-			Id: cs.id,
-		})
-
-		if err != nil {
-			log.Println("Error while autodiscovering peers: ", err)
-			cs.Unlock()
-			continue
-		}
-
-		for _, node := range r.Nodes {
-			if node.Id != cs.id && cs.peers[node.Id] == nil {
-				cs.peers[node.Id] = ConnectToPeer(node.Address)
-				cs.nextIndex[node.Id] = cs.lastApplied + 1
-				cs.matchIndex[node.Id] = 0
-			}
-		}
-
-		if len(r.Nodes) < len(cs.peers) {
-			for id := range cs.peers {
-				found := false
-				for _, node := range r.Nodes {
-					if node.Id == id {
-						found = true
-						break
-					}
-				}
-				if !found {
-					delete(cs.peers, id)
-					delete(cs.nextIndex, id)
-					delete(cs.matchIndex, id)
-				}
-			}
-		}
-
-		cs.Unlock()
-
-	}
-
 }
 
 func (cs *ConsensusServer) BecomeLeader() error {

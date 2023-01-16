@@ -2,14 +2,6 @@ version: "3.9"
 
 services:
 
-  registry:
-    build:
-      dockerfile: ./Dockerfile.registry
-    environment:
-      PORT: 8080
-      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
-      OTEL_SERVICE_NAME: registry-server
-
   server_1:
     build:
       dockerfile: ./Dockerfile.server
@@ -17,11 +9,10 @@ services:
       ID: 1
       REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: host.docker.internal
-      PORT: 50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-1
-    ports:
-      - "50051:50051"
+    volumes:
+      - ./servers.yml:/servers.yml
   server_2:
     build:
       dockerfile: ./Dockerfile.server
@@ -29,11 +20,10 @@ services:
       ID: 2
       REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: host.docker.internal
-      PORT: 50052
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-2
-    ports:
-      - "50052:50052"
+    volumes:
+      - ./servers.yml:/servers.yml
   
   server_3:
     build:
@@ -42,11 +32,10 @@ services:
       ID: 3
       REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: host.docker.internal
-      PORT: 50053
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-3
-    ports:
-      - "50053:50053"
+    volumes:
+      - ./servers.yml:/servers.yml
 
 
   server_4:
@@ -56,11 +45,10 @@ services:
       ID: 4
       REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: host.docker.internal
-      PORT: 50054
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-4
-    ports:
-      - "50054:50054"
+    volumes:
+      - ./servers.yml:/servers.yml
 
   server_5:
     build:
@@ -69,16 +57,8 @@ services:
       ID: 5
       REGISTRY_URL: ${REGISTRY_URL}
       HOST_URL: host.docker.internal
-      PORT: 50055
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-5
-    ports:
-      - "50055:50055"
-
-  # client:
-  #   build:
-  #     dockerfile: ./Dockerfile.client
-  #   environment:
-  #     STORE_SERVER: server_1:50051
-  #     OTEL_SERVICE_NAME: raft-client
+    volumes:
+      - ./servers.yml:/servers.yml
 

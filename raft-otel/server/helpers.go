@@ -32,6 +32,7 @@ func ConnectToPeer(addr string) *Peer {
 	return &Peer{
 		client,
 		addr,
+		Online,
 	}
 }
 

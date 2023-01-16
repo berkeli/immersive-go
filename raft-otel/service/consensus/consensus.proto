@@ -66,9 +66,6 @@ message Entry {
 
 }
 
-message DummyRequest {}
-message DummyResponse {}
-
 service ConsensusService {
     
     // Receiver implementation:
@@ -89,7 +86,5 @@ service ConsensusService {
     // least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
 
     rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse) {}
-
-    rpc Dummy(DummyRequest) returns (DummyResponse) {}
 
 }
