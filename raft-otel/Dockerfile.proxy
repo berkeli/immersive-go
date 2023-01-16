@@ -1,0 +1,18 @@
+FROM golang:1.19-buster AS build
+
+WORKDIR /app
+
+COPY service service
+COPY proxy proxy
+COPY cmd/proxy cmd/proxy
+COPY go* .
+
+RUN go mod download
+
+RUN go build -o /app/proxy-exec ./cmd/proxy
+
+FROM gcr.io/distroless/base-debian10
+
+COPY --from=build /app/proxy-exec /app/proxy-exec
+
+ENTRYPOINT ["/app/proxy-exec"]

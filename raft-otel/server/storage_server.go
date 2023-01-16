@@ -69,9 +69,7 @@ func (ss *StorageServer) CompareAndSet(ctx context.Context, req *pb.CompareAndSe
 
 func (ss *StorageServer) LeaderCheckInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	switch info.Server.(type) {
-	case *ConsensusServer:
-		return handler(ctx, req)
-	default:
+	case *StorageServer:
 		ss.c.Lock()
 		if ss.c.state != Leader {
 			if ss.c.leaderId == -1 {
@@ -80,15 +78,19 @@ func (ss *StorageServer) LeaderCheckInterceptor(ctx context.Context, req interfa
 
 			status := status.New(codes.Unavailable, "not leader, redirecting")
 
-			status.WithDetails(
+			detSt, err := status.WithDetails(
 				&pb.NotLeaderResponse{
 					LeaderId:   ss.c.leaderId,
 					LeaderAddr: ss.c.peers[ss.c.leaderId].Addr,
 				},
 			)
 
-			ss.c.Unlock()
+			if err == nil {
+				ss.c.Unlock()
+				return nil, detSt.Err()
+			}
 
+			ss.c.Unlock()
 			return nil, status.Err()
 		}
 		ss.c.Unlock()

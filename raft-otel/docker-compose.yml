@@ -2,13 +2,22 @@ version: "3.9"
 
 services:
 
+  proxy:
+    build:
+      dockerfile: ./Dockerfile.proxy
+    environment:
+      HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
+      OTEL_SERVICE_NAME: raft-proxy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./servers.yml:/servers.yml
+
   server_1:
     build:
       dockerfile: ./Dockerfile.server
     environment:
-      ID: 1
-      REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: host.docker.internal
+      SELF_ADDR: server_1:50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-1
     volumes:
@@ -17,9 +26,7 @@ services:
     build:
       dockerfile: ./Dockerfile.server
     environment:
-      ID: 2
-      REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: host.docker.internal
+      SELF_ADDR: server_2:50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-2
     volumes:
@@ -29,9 +36,7 @@ services:
     build:
       dockerfile: ./Dockerfile.server
     environment:
-      ID: 3
-      REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: host.docker.internal
+      SELF_ADDR: server_3:50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-3
     volumes:
@@ -42,9 +47,7 @@ services:
     build:
       dockerfile: ./Dockerfile.server
     environment:
-      ID: 4
-      REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: host.docker.internal
+      SELF_ADDR: server_4:50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-4
     volumes:
@@ -54,9 +57,7 @@ services:
     build:
       dockerfile: ./Dockerfile.server
     environment:
-      ID: 5
-      REGISTRY_URL: ${REGISTRY_URL}
-      HOST_URL: host.docker.internal
+      SELF_ADDR: server_5:50051
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
       OTEL_SERVICE_NAME: raft-server-5
     volumes:
