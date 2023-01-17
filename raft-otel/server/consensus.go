@@ -13,7 +13,6 @@ import (
 	"time"
 
 	CP "github.com/berkeli/raft-otel/service/consensus"
-	"github.com/cenkalti/backoff/v4"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
@@ -366,26 +365,18 @@ func (cs *ConsensusServer) heartbeat() {
 				go func(id int64) {
 					// Try AE with exponential backoff,
 					// if failed - we will set status of that peer to offline and create a goroutine to try to reconnect (every 30 seconds).
-					err := backoff.Retry(func() error {
-						cs.Lock()
-						defer cs.Unlock()
-						err := cs.appendEntriesRPC(id, 0)
-						if status.Code(err) == codes.Unavailable {
-							return backoff.Permanent(err)
-						}
-						if err != nil {
-							return err
-						}
-						return nil
-					}, backoff.NewExponentialBackOff())
-
-					if err != nil {
+					cs.Lock()
+					defer cs.Unlock()
+					err := cs.appendEntriesRPC(id, 0)
+					if status.Code(err) == codes.Unavailable {
 						log.Println("Couldn't send Heartbeat to peer: ", id, "taking it offline")
-						cs.Lock()
 						cs.peers[id].status = Offline
 						cs.peerCount--
-						cs.Unlock()
 						go cs.reconnectPeer(id)
+						return
+					}
+					if err != nil {
+						log.Println("Couldn't send Heartbeat to peer: ", err)
 					}
 				}(id)
 			}
