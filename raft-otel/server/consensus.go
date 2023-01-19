@@ -1,18 +1,21 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/big"
 	"os"
+	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
 	CP "github.com/berkeli/raft-otel/service/consensus"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
@@ -21,6 +24,38 @@ import (
 const (
 	ReqTimeout = 5 * time.Second
 )
+
+var tracerC = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME"))
+
+type debugMutex struct {
+	name string
+	mux  sync.Mutex
+}
+
+func (d *debugMutex) Lock() {
+	d.print("Lock")
+	d.mux.Lock()
+	d.print("Lock after")
+}
+
+func (d *debugMutex) Unlock() {
+	d.mux.Unlock()
+	d.print("Unlock")
+}
+
+func (d *debugMutex) print(l string) {
+	_, fn, line, _ := runtime.Caller(2)
+	fmt.Printf("Locker: %s:%d -> %v:%v -> %v\n", fn, line, d.name, l, getGID())
+}
+
+func getGID() uint64 {
+	b := make([]byte, 64)
+	b = b[:runtime.Stack(b, false)]
+	b = bytes.TrimPrefix(b, []byte("goroutine "))
+	b = b[:bytes.IndexByte(b, ' ')]
+	n, _ := strconv.ParseUint(string(b), 10, 64)
+	return n
+}
 
 type ConsensusServer struct {
 	sync.Mutex
@@ -173,7 +208,7 @@ func (cs *ConsensusServer) AppendEntries(ctx context.Context, req *CP.AppendEntr
 	if newEntriesIndex < len(req.Entries) {
 		new := req.Entries[newEntriesIndex:]
 		cs.log = append(cs.log[:logInsertIndex], new...)
-		cs.persist(new)
+		cs.persist(ctx, new)
 	}
 
 	// Set commit index.
@@ -204,7 +239,7 @@ func (cs *ConsensusServer) loadPeers() error {
 		configPath = "/servers.yml"
 	}
 
-	config, err := ioutil.ReadFile(configPath)
+	config, err := os.ReadFile(configPath)
 
 	if err != nil {
 		return fmt.Errorf("error while reading config file: %s", err)
@@ -243,7 +278,7 @@ func (cs *ConsensusServer) reconnectPeer(id int64) {
 		if cs.state == Leader {
 			log.Printf("Trying to reconnect to peer %d", id)
 
-			err := cs.appendEntriesRPC(id, 0)
+			err := cs.appendEntriesRPC(context.Background(), id, 0)
 
 			if err == nil {
 				log.Printf("Reconnected to peer %d", id)
@@ -251,21 +286,24 @@ func (cs *ConsensusServer) reconnectPeer(id int64) {
 				cs.peerCount++
 				cs.Unlock()
 				return
+			} else {
+				log.Printf("Failed to reconnect to peer %d: %s", id, err)
+				cs.Unlock()
 			}
 		}
-		cs.Unlock()
 	}
 }
 
 func (cs *ConsensusServer) becomeLeader() error {
 	log.Println("Becoming leader")
-	cs.state = Leader
-	cs.leaderId = cs.id
 
 	for id := range cs.peers {
 		cs.nextIndex[id] = int64(len(cs.log))
 		cs.matchIndex[id] = -1
 	}
+
+	cs.state = Leader
+	cs.leaderId = cs.id
 
 	go cs.heartbeat()
 
@@ -300,7 +338,11 @@ func (cs *ConsensusServer) becomeCandidate() error {
 	log.Println("Becoming candidate and requesting votes with term: ", cs.currentTerm)
 
 	for {
-		votes += <-chVotes
+		log.Println("Waiting for votes...")
+		vote := <-chVotes
+		log.Println("Got vote: ", vote)
+
+		votes += vote
 
 		if savedCurrTerm != cs.currentTerm {
 			return nil
@@ -367,16 +409,14 @@ func (cs *ConsensusServer) heartbeat() {
 					// if failed - we will set status of that peer to offline and create a goroutine to try to reconnect (every 30 seconds).
 					cs.Lock()
 					defer cs.Unlock()
-					err := cs.appendEntriesRPC(id, 0)
+					ctx, cancel := context.WithTimeout(context.Background(), frequency*10)
+					defer cancel()
+					err := cs.appendEntriesRPC(ctx, id, 0)
 					if status.Code(err) == codes.Unavailable {
-						log.Println("Couldn't send Heartbeat to peer: ", id, "taking it offline")
 						cs.peers[id].status = Offline
 						cs.peerCount--
 						go cs.reconnectPeer(id)
 						return
-					}
-					if err != nil {
-						log.Println("Couldn't send Heartbeat to peer: ", err)
 					}
 				}(id)
 			}
@@ -438,7 +478,7 @@ func (cs *ConsensusServer) requestVotesRPC(term int64) chan int {
 	chVotes := make(chan int, len(cs.peers))
 	log.Printf("Requesting votes from %d peers", len(cs.peers))
 	for i, peer := range cs.peers {
-		if peer == nil {
+		if peer == nil || peer.status == Offline {
 			continue
 		}
 
@@ -477,7 +517,7 @@ func (cs *ConsensusServer) requestVotesRPC(term int64) chan int {
 
 // AppendEntriesRPC is called by leader to replicate log entries (§5.3); also used as Heartbeat (§5.2).
 // expects state to be locked
-func (cs *ConsensusServer) appendEntriesRPC(id int64, n int) error {
+func (cs *ConsensusServer) appendEntriesRPC(ctx context.Context, id int64, n int) error {
 	peer := cs.peers[id]
 
 	ni := cs.nextIndex[id] - int64(n)
@@ -488,7 +528,12 @@ func (cs *ConsensusServer) appendEntriesRPC(id int64, n int) error {
 		prevLogTerm = cs.log[ni-1].Term
 	}
 
-	r, err := peer.AppendEntries(context.Background(), &CP.AppendEntriesRequest{
+	if ni < 0 {
+		log.Println("nextIndex is negative, skipping AE: ", ni)
+		return nil
+	}
+
+	r, err := peer.AppendEntries(ctx, &CP.AppendEntriesRequest{
 		Term:         cs.currentTerm,
 		LeaderId:     cs.id,
 		PrevLogIndex: ni - 1,
@@ -510,12 +555,14 @@ func (cs *ConsensusServer) appendEntriesRPC(id int64, n int) error {
 	return nil
 }
 
-func (cs *ConsensusServer) appendOrDie(id int64, done chan bool) {
+func (cs *ConsensusServer) appendOrDie(ctx context.Context, id int64, done chan bool) {
 	n := 0
 	success := false
 	for {
-		err := cs.appendEntriesRPC(id, n)
+		ctx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
 
+		err := cs.appendEntriesRPC(ctx, id, n)
+		cancel()
 		if err == nil {
 			success = true
 			break
@@ -532,9 +579,13 @@ func (cs *ConsensusServer) appendOrDie(id int64, done chan bool) {
 	done <- success
 }
 
-func (cs *ConsensusServer) Commit(key string, data []byte) (ok bool, err error) {
+func (cs *ConsensusServer) Commit(ctx context.Context, key string, data []byte) (ok bool, err error) {
+	ctx, span := tracerC.Start(ctx, "commit")
 	cs.Lock()
-	defer cs.Unlock()
+	defer func() {
+		cs.Unlock()
+		span.End()
+	}()
 
 	entry := &CP.Entry{
 		Term: cs.currentTerm,
@@ -551,15 +602,14 @@ func (cs *ConsensusServer) Commit(key string, data []byte) (ok bool, err error) 
 	confChan := make(chan bool, len(cs.peers))
 
 	start := time.Now()
-
+	_, spanConf := tracerC.Start(ctx, "confirmations")
 	for id, peer := range cs.peers {
 		if peer == nil {
 			continue
 		}
-
-		go cs.appendOrDie(id, confChan)
+		go cs.appendOrDie(ctx, id, confChan)
 	}
-
+	defer spanConf.End()
 	for {
 		select {
 		case success := <-confChan:
@@ -580,9 +630,11 @@ func (cs *ConsensusServer) Commit(key string, data []byte) (ok bool, err error) 
 	}
 }
 
-func (cs *ConsensusServer) persist(entries []*CP.Entry) {
+func (cs *ConsensusServer) persist(ctx context.Context, entries []*CP.Entry) {
+	ctx, span := tracerC.Start(ctx, "persist")
+	defer span.End()
 	for _, entry := range entries {
-		log.Println("Persisting", entry)
-		cs.store.Set(entry.Command.Key, entry.Command.Data)
+		log.Println("Persisting", entry.Command.Key)
+		cs.store.Set(ctx, entry.Command.Key, entry.Command.Data)
 	}
 }

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"testing"
 )
 
@@ -8,18 +9,18 @@ func Test_Storage(t *testing.T) {
 	t.Run("TestMapStorage", func(t *testing.T) {
 		s := NewMapStorage()
 
-		if s.HasData() {
+		if s.HasData(context.Background()) {
 			t.Errorf("Expected HasData() to be false on empty storage")
 		}
 
 		val := []byte("bar")
 
-		s.Set("foo", val)
-		if got, ok := s.Get("foo"); !ok || string(got) != string(val) {
+		s.Set(context.Background(), "foo", val)
+		if got, ok := s.Get(context.Background(), "foo"); !ok || string(got) != string(val) {
 			t.Errorf("Expected bar, got %s", got)
 		}
 
-		if !s.HasData() {
+		if !s.HasData(context.Background()) {
 			t.Errorf("Expected HasData() to be true")
 		}
 	})

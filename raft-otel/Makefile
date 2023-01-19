@@ -1,3 +1,4 @@
+include $(PWD)/.env
 .PHONY: client
 proto_gen:
 	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative service/store/store.proto
@@ -8,8 +9,11 @@ run:
 	docker-compose up -d
 	make client
 
+add:
+	docker-compose --profile add up
+
 client:
-	STORE_SERVER="localhost:50052" OTEL_SERVICE_NAME=raft-client go run cmd/client/main.go
+	STORE_SERVER="localhost:8080" OTEL_SERVICE_NAME=raft-client HONEYCOMB_API_KEY=$(HONEYCOMB_API_KEY) go run cmd/client/main.go
 
 destroy:
 	docker-compose down

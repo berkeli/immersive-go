@@ -17,9 +17,24 @@ services:
     build:
       dockerfile: ./Dockerfile.server
     environment:
-      SELF_ADDR: server_1:50051
+      # this is the address of the server
+      SELF_ADDR: server_1:50051 
+      # this is the api key for honeycomb
       HONEYCOMB_API_KEY: ${HONEYCOMB_API_KEY}
-      OTEL_SERVICE_NAME: raft-server-1
+      # this is the name of the service for honeycomb 
+      OTEL_SERVICE_NAME: raft-server-1 
+      # this is the error rate for the server (appendEntries only). 0.1 means 10% of requests will fail
+      ERROR_RATE: 0.1
+      # this is the delay rate for the server (appendEntries only). 0.1 means 10% of requests will be delayed
+      DELAY_RATE: 1
+      # this is the delay time for the server (appendEntries only). 100 means 100ms
+      DELAY_MS: 100
+      # this is the error rate for the storage_server (get/set/compareAndSet). 0.1 means 10% of requests will fail
+      STORAGE_SERVER_ERROR_RATE: 0.1
+      # this is the delay rate for the storage_server (get/set/compareAndSet). 0.1 means 10% of requests will be delayed
+      STORAGE_SERVER_DELAY_RATE: 1
+      # this is the delay time for the storage_server (get/set/compareAndSet). 100 means 100ms
+      STORAGE_SERVER_DELAY_MS: 100
     volumes:
       - ./servers.yml:/servers.yml
   server_2:
@@ -62,4 +77,4 @@ services:
       OTEL_SERVICE_NAME: raft-server-5
     volumes:
       - ./servers.yml:/servers.yml
-
+  

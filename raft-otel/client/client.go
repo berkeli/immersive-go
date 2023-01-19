@@ -10,11 +10,15 @@ import (
 	"strings"
 
 	SP "github.com/berkeli/raft-otel/service/store"
+	_ "github.com/honeycombio/honeycomb-opentelemetry-go"
+	"github.com/honeycombio/opentelemetry-go-contrib/launcher"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 )
+
+var tracer = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME"))
 
 type Client struct {
 	sc SP.StoreClient
@@ -31,7 +35,14 @@ func (c *Client) Run() error {
 		return fmt.Errorf("STORE_SERVER env variable not set")
 	}
 
-	conn, err := grpc.Dial(
+	otelShutdown, err := launcher.ConfigureOpenTelemetry()
+	if err != nil {
+		log.Fatalf("error setting up OTel SDK - %e", err)
+	}
+	defer otelShutdown()
+
+	conn, err := grpc.DialContext(
+		context.Background(),
 		storeServer,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
@@ -83,7 +94,7 @@ func (c *Client) RunCli() {
 			if err != nil {
 				fmt.Println("ERR - ", err)
 			} else {
-				fmt.Printf("GOT - %s : %s", cmd[1], value)
+				fmt.Printf("%s : %s\n", cmd[1], value)
 			}
 		case "set":
 			if len(cmd) < 3 {
@@ -94,7 +105,22 @@ func (c *Client) RunCli() {
 			if err != nil {
 				fmt.Println("ERR - ", err)
 			} else {
-				fmt.Printf("SET - %s : %s", cmd[1], cmd[2])
+				fmt.Printf("%s = %s\n", cmd[1], cmd[2])
+			}
+		case "help":
+			PrintHelp()
+		case "setif":
+			if len(cmd) < 4 {
+				fmt.Println("ERR - SETIF command requires key, value and previous value")
+				continue
+			}
+
+			err := c.SetIf(cmd[1], cmd[2], cmd[3])
+
+			if err != nil {
+				fmt.Println("ERR - ", err)
+			} else {
+				fmt.Printf("%s = %s\n", cmd[1], cmd[2])
 			}
 		default:
 		}
@@ -102,27 +128,22 @@ func (c *Client) RunCli() {
 }
 
 func (c *Client) Get(key string) (string, error) {
-	r, err := c.sc.Get(context.Background(), &SP.GetRequest{Key: key})
+	ctx, span := tracer.Start(context.Background(), "GET")
+	defer span.End()
+	r, err := c.sc.Get(ctx, &SP.GetRequest{Key: key})
 
-	st := status.Convert(err)
-
-	details := st.Details()
-
-	for _, detail := range details {
-		switch info := detail.(type) {
-		case *SP.NotLeaderResponse:
-			log.Printf("RaftError: %v", info.LeaderAddr)
-		default:
-			log.Printf("Unexpected type: %T", info)
-		}
-	}
-
-	// TODO: implement leader redirect
 	if err != nil {
 		return "", err
 	}
 
 	return string(r.Value), nil
+}
+
+func (c *Client) SetIf(key, value, prevValue string) error {
+	ctx, span := tracer.Start(context.Background(), "CompareAndSet")
+	defer span.End()
+	_, err := c.sc.CompareAndSet(ctx, &SP.CompareAndSetRequest{Key: key, Value: []byte(value), PrevValue: []byte(prevValue)})
+	return err
 }
 
 func (c *Client) Put(key, value string) error {

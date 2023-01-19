@@ -3,12 +3,13 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
 
 	SP "github.com/berkeli/raft-otel/service/store"
+	_ "github.com/honeycombio/honeycomb-opentelemetry-go"
+	"github.com/honeycombio/opentelemetry-go-contrib/launcher"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,7 +33,9 @@ func New() *Proxy {
 		panic(err)
 	}
 
-	conn, err := grpc.Dial(peers[0],
+	conn, err := grpc.DialContext(
+		context.Background(),
+		peers[0],
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
@@ -53,7 +56,7 @@ func (p *Proxy) Get(ctx context.Context, req *SP.GetRequest) (*SP.GetResponse, e
 	r, err := p.u.Get(ctx, req)
 
 	if err != nil {
-		ok, err := p.notLeaderStatus(err)
+		ok, err := p.notLeaderStatus(ctx, err)
 
 		if ok {
 			if err != nil {
@@ -72,7 +75,7 @@ func (p *Proxy) Put(ctx context.Context, req *SP.PutRequest) (*SP.PutResponse, e
 	r, err := p.u.Put(ctx, req)
 
 	if err != nil {
-		ok, err := p.notLeaderStatus(err)
+		ok, err := p.notLeaderStatus(ctx, err)
 
 		if ok {
 			if err != nil {
@@ -91,7 +94,7 @@ func (p *Proxy) CompareAndSet(ctx context.Context, req *SP.CompareAndSetRequest)
 	r, err := p.u.CompareAndSet(ctx, req)
 
 	if err != nil {
-		ok, err := p.notLeaderStatus(err)
+		ok, err := p.notLeaderStatus(ctx, err)
 
 		if ok {
 			if err != nil {
@@ -113,6 +116,12 @@ func (p *Proxy) Run() error {
 		return err
 	}
 
+	otelShutdown, err := launcher.ConfigureOpenTelemetry()
+	if err != nil {
+		log.Fatalf("error setting up OTel SDK - %e", err)
+	}
+	defer otelShutdown()
+
 	s := grpc.NewServer(
 		grpc.UnaryInterceptor(otelgrpc.UnaryServerInterceptor()),
 		grpc.StreamInterceptor(otelgrpc.StreamServerInterceptor()),
@@ -131,7 +140,7 @@ func readConfig(path string) ([]string, error) {
 		configPath = "/servers.yml"
 	}
 
-	config, err := ioutil.ReadFile(configPath)
+	config, err := os.ReadFile(configPath)
 
 	if err != nil {
 		return nil, fmt.Errorf("error while reading config file: %s", err)
@@ -148,7 +157,7 @@ func readConfig(path string) ([]string, error) {
 	return servers, nil
 }
 
-func (p *Proxy) notLeaderStatus(err error) (bool, error) {
+func (p *Proxy) notLeaderStatus(ctx context.Context, err error) (bool, error) {
 	st, ok := status.FromError(err)
 	if !ok {
 		return false, nil
@@ -159,7 +168,9 @@ func (p *Proxy) notLeaderStatus(err error) (bool, error) {
 		case *SP.NotLeaderResponse:
 			fmt.Println("Oops! This is not the leader!")
 			fmt.Println("Redirecting to leader:", t.LeaderAddr)
-			client, err := grpc.Dial(t.LeaderAddr,
+			client, err := grpc.DialContext(
+				ctx,
+				t.LeaderAddr,
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
 				grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 				grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),

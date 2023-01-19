@@ -16,14 +16,16 @@ type StorageServer struct {
 	c *ConsensusServer
 }
 
-func NewStorageServer(s *MapStorage) *StorageServer {
-	return &StorageServer{
-		s: s,
+func NewStorageServer(m *MapStorage) *StorageServer {
+	server := &StorageServer{
+		s: m,
 	}
+
+	return server
 }
 
 func (ss *StorageServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
-	val, found := ss.s.Get(req.Key)
+	val, found := ss.s.Get(ctx, req.Key)
 
 	if !found {
 		return nil, status.Error(codes.NotFound, "key not found")
@@ -35,7 +37,7 @@ func (ss *StorageServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRe
 }
 
 func (ss *StorageServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
-	ok, err := ss.c.Commit(req.Key, req.Value)
+	ok, err := ss.c.Commit(ctx, req.Key, req.Value)
 
 	if err != nil {
 		return nil, err
@@ -45,7 +47,7 @@ func (ss *StorageServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 		return nil, status.Error(codes.Unavailable, "commit failed")
 	}
 
-	ss.s.Set(req.Key, req.Value)
+	ss.s.Set(ctx, req.Key, req.Value)
 
 	return &pb.PutResponse{
 		Ok: true,
@@ -53,10 +55,11 @@ func (ss *StorageServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRe
 }
 
 func (ss *StorageServer) CompareAndSet(ctx context.Context, req *pb.CompareAndSetRequest) (*pb.CompareAndSetResponse, error) {
-	prev, found := ss.s.Get(req.Key)
+
+	prev, found := ss.s.Get(ctx, req.Key)
 
 	if !found || bytes.Equal(prev, req.PrevValue) {
-		ss.s.Set(req.Key, req.Value)
+		ss.s.Set(ctx, req.Key, req.Value)
 		return &pb.CompareAndSetResponse{
 			Ok: true,
 		}, nil
@@ -67,12 +70,18 @@ func (ss *StorageServer) CompareAndSet(ctx context.Context, req *pb.CompareAndSe
 	}, status.Error(codes.FailedPrecondition, "prev value does not match")
 }
 
-func (ss *StorageServer) LeaderCheckInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func (ss *StorageServer) LeaderCheckInterceptor(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (interface{}, error) {
 	switch info.Server.(type) {
 	case *StorageServer:
 		ss.c.Lock()
 		if ss.c.state != Leader {
 			if ss.c.leaderId == -1 {
+				ss.c.Unlock()
 				return nil, status.Error(codes.Unavailable, "leader has not been elected yet")
 			}
 
