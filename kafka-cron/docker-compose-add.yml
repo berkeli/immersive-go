@@ -1,0 +1,43 @@
+version: '3.9'
+
+networks: 
+  default: 
+    name: kafka_cron
+    external: true
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+
+services:
+  cluster-a-3:
+    build:
+      context: .
+      dockerfile: ./consumer/Dockerfile
+    volumes:
+      - ./scripts:/scripts
+    command: ["/build", "--topic", "jobs-cluster-a", "--brokerList", "kafka:29092", "--retryTopic", "jobs-cluster-a-retries"]
+
+  cluster-a-4:
+    build:
+      context: .
+      dockerfile: ./consumer/Dockerfile
+    volumes:
+      - ./scripts:/scripts
+    command: ["/build", "--topic", "jobs-cluster-a", "--brokerList", "kafka:29092", "--retryTopic", "jobs-cluster-a-retries", "--partition", "1"]
+
+  cluster-a-5:
+    build:
+      context: .
+      dockerfile: ./consumer/Dockerfile
+    volumes:
+      - ./scripts:/scripts
+    command: ["/build", "--topic", "jobs-cluster-a", "--brokerList", "kafka:29092", "--retryTopic", "jobs-cluster-a-retries"]
+
+  cluster-a-6:
+    build:
+      context: .
+      dockerfile: ./consumer/Dockerfile
+    volumes:
+      - ./scripts:/scripts
+    command: ["/build", "--topic", "jobs-cluster-a", "--brokerList", "kafka:29092", "--retryTopic", "jobs-cluster-a-retries", "--partition", "1"]

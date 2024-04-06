@@ -1,0 +1,22 @@
+global:
+  scrape_interval:     5s # Set the scrape interval to every 5 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+
+alerting:
+  alertmanagers:
+    - static_configs:
+      - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+scrape_configs:
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:8999']
+  - job_name: 'producers'
+    static_configs:
+      - targets: ['producer:2112']
+  - job_name: 'consumers'
+    static_configs:
+      - targets: ['cluster-a:2112', 'cluster-a-2:2112', 'cluster-a-3:2112', 'cluster-a-4:2112',  'cluster-a-5:2112', 'cluster-a-6:2112', 'cluster-b:2112', 'cluster-b-retries:2112', 'cluster-a-retries:2112', 'cluster-b-retries:2112']

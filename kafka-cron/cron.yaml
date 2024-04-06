@@ -1,0 +1,49 @@
+# max_allowed_retries defaults to 3, if you don't specify it
+# to disbable retries, set it to -1
+# should probably be per cluster...
+max_allowed_retries: 10
+clusters:
+  - name: "cluster-a"
+    partitions: 2
+    replication: 1
+  - name: "cluster-a-retries"
+    partitions: 1
+  - name: "cluster-b"
+    partitions: 1
+  - name: "cluster-b-retries"
+crons:
+  - description: 'Task #1'
+    schedule: "* * * * *"
+    command: sh /scripts/random-fail.sh
+    max_retries: 3
+    clusters: 
+      - "cluster-a"
+      - "cluster-b"
+  - description: 'Task #2'
+    schedule: "* * * * *"
+    command: sh /scripts/random-fail.sh
+    max_retries: 3
+    clusters: 
+      - "cluster-a"
+      - "cluster-b"
+  - description: 'Task #3'
+    schedule: "* * * * *"
+    command: sh /scripts/random-fail.sh
+    max_retries: 3
+    clusters: 
+      - "cluster-a"
+      - "cluster-b"
+  - description: 'Task #4'
+    schedule: "* * * * *"
+    command: sh /scripts/random-fail.sh
+    max_retries: 3
+    clusters: 
+      - "cluster-a"
+      - "cluster-b"
+  - description: 'Task #5'
+    schedule: "* * * * *"
+    command: sh /scripts/random-fail.sh
+    max_retries: 3
+    clusters: 
+      - "cluster-a"
+      - "cluster-b"

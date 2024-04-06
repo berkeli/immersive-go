@@ -1,0 +1,4 @@
+.env
+alertmanager.yml
+.vscode
+troubleshooting.md
